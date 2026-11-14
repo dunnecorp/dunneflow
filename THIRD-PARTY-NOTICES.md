@@ -56,3 +56,17 @@ with `uv` uses your own copies instead.
 | [PyInstaller](https://pyinstaller.org) bootloader | GPL-2.0 with the bootloader exception, which permits distributing it with any program | [pyinstaller.org/en/stable/license.html](https://pyinstaller.org/en/stable/license.html) |
 
 These notices are bundled inside each application next to DunneFlow's own `LICENSE`.
+
+## Programs named, not distributed
+
+DunneFlow is measured against other people's programs, and some of them are named here: in
+`GROUND-TRUTH.md`, in comments and tests that cite a figure taken on them, and in screenshots
+in the guide. None of their source is in this repository or in the applications.
+
+**djangoproject.com**, the source of the Django project's website, is © Django Software
+Foundation and individual contributors, and is published at
+[github.com/django/djangoproject.com](https://github.com/django/djangoproject.com) under the
+BSD 3-Clause licence. It was analysed from its public source (commit 6c356df, August 2026)
+for comparison only. Neither the Django Software Foundation nor the site's contributors have
+reviewed or endorsed DunneFlow. Django is a registered trademark of the Django Software
+Foundation.
