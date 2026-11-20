@@ -3530,7 +3530,7 @@ var require_typescript = __commonJS({
       }
       function levenshteinWithMax(s1, s2, max) {
         let previous = new Array(s2.length + 1);
-        let current = new Array(s2.length + 1);
+        let current2 = new Array(s2.length + 1);
         const big = max + 0.01;
         for (let i = 0; i <= s2.length; i++) {
           previous[i] = i;
@@ -3539,10 +3539,10 @@ var require_typescript = __commonJS({
           const c1 = s1.charCodeAt(i - 1);
           const minJ = Math.ceil(i > max ? i - max : 1);
           const maxJ = Math.floor(s2.length > max + i ? max + i : s2.length);
-          current[0] = i;
+          current2[0] = i;
           let colMin = i;
           for (let j = 1; j < minJ; j++) {
-            current[j] = big;
+            current2[j] = big;
           }
           for (let j = minJ; j <= maxJ; j++) {
             const substitutionDistance = s1[i - 1].toLowerCase() === s2[j - 1].toLowerCase() ? previous[j - 1] + 0.1 : previous[j - 1] + 2;
@@ -3550,22 +3550,22 @@ var require_typescript = __commonJS({
               /*delete*/
               previous[j] + 1,
               /*insert*/
-              current[j - 1] + 1,
+              current2[j - 1] + 1,
               /*substitute*/
               substitutionDistance
             );
-            current[j] = dist;
+            current2[j] = dist;
             colMin = Math.min(colMin, dist);
           }
           for (let j = maxJ + 1; j <= s2.length; j++) {
-            current[j] = big;
+            current2[j] = big;
           }
           if (colMin > max) {
             return void 0;
           }
           const temp = previous;
-          previous = current;
-          current = temp;
+          previous = current2;
+          current2 = temp;
         }
         const res = previous[s2.length];
         return res > max ? void 0 : res;
@@ -15242,9 +15242,9 @@ ${lanes.join("\n")}
       }
       function getTypeParameterOwner(d) {
         if (d && d.kind === 169) {
-          for (let current = d; current; current = current.parent) {
-            if (isFunctionLike(current) || isClassLike(current) || current.kind === 265) {
-              return current;
+          for (let current2 = d; current2; current2 = current2.parent) {
+            if (isFunctionLike(current2) || isClassLike(current2) || current2.kind === 265) {
+              return current2;
             }
           }
         }
@@ -17949,7 +17949,7 @@ ${lanes.join("\n")}
         return findAncestor(node.parent, (n) => !!(getContainerFlags(n) & 1));
       }
       function getEnclosingBlockScopeContainer(node) {
-        return findAncestor(node.parent, (current) => isBlockScope(current, current.parent));
+        return findAncestor(node.parent, (current2) => isBlockScope(current2, current2.parent));
       }
       function forEachEnclosingBlockScopeContainer(node, cb) {
         let container = getEnclosingBlockScopeContainer(node);
@@ -20603,8 +20603,8 @@ ${lanes.join("\n")}
       var indentStrings = ["", "    "];
       function getIndentString(level) {
         const singleLevel = indentStrings[1];
-        for (let current = indentStrings.length; current <= level; current++) {
-          indentStrings.push(indentStrings[current - 1] + singleLevel);
+        for (let current2 = indentStrings.length; current2 <= level; current2++) {
+          indentStrings.push(indentStrings[current2 - 1] + singleLevel);
         }
         return indentStrings[level];
       }
@@ -23042,9 +23042,9 @@ ${lanes.join("\n")}
           if (visited.has(canonicalPath)) return;
           visited.set(canonicalPath, true);
           const { files, directories } = getFileSystemEntries(path2);
-          for (const current of toSorted(files, compareStringsCaseSensitive)) {
-            const name = combinePaths(path2, current);
-            const absoluteName = combinePaths(absolutePath, current);
+          for (const current2 of toSorted(files, compareStringsCaseSensitive)) {
+            const name = combinePaths(path2, current2);
+            const absoluteName = combinePaths(absolutePath, current2);
             if (extensions && !fileExtensionIsOneOf(name, extensions)) continue;
             if (excludeRegex && excludeRegex.test(absoluteName)) continue;
             if (!includeFileRegexes) {
@@ -23062,9 +23062,9 @@ ${lanes.join("\n")}
               return;
             }
           }
-          for (const current of toSorted(directories, compareStringsCaseSensitive)) {
-            const name = combinePaths(path2, current);
-            const absoluteName = combinePaths(absolutePath, current);
+          for (const current2 of toSorted(directories, compareStringsCaseSensitive)) {
+            const name = combinePaths(path2, current2);
+            const absoluteName = combinePaths(absolutePath, current2);
             if ((!includeDirectoryRegex || includeDirectoryRegex.test(absoluteName)) && (!excludeRegex || !excludeRegex.test(absoluteName))) {
               visitDirectory(name, absoluteName, depth2);
             }
@@ -24811,18 +24811,18 @@ ${lanes.join("\n")}
       }
       function getNodeAtPosition(sourceFile, position, includeJSDoc) {
         const isJavaScriptFile = isInJSFile(sourceFile);
-        let current = sourceFile;
+        let current2 = sourceFile;
         const getContainingChild = (child) => {
           if (child.pos <= position && (position < child.end || position === child.end && child.kind === 1)) {
             return child;
           }
         };
         while (true) {
-          const child = isJavaScriptFile && includeJSDoc && hasJSDocNodes(current) && forEach(current.jsDoc, getContainingChild) || forEachChild(current, getContainingChild);
+          const child = isJavaScriptFile && includeJSDoc && hasJSDocNodes(current2) && forEach(current2.jsDoc, getContainingChild) || forEachChild(current2, getContainingChild);
           if (!child || isMetaProperty(child)) {
-            return current;
+            return current2;
           }
-          current = child;
+          current2 = child;
         }
       }
       function isNewScopeNode(node) {
@@ -35080,30 +35080,30 @@ ${lanes.join("\n")}
           parents.push(rootNode);
         }
         while (queue.length !== 0) {
-          const current = queue.pop();
+          const current2 = queue.pop();
           const parent2 = parents.pop();
-          if (isArray(current)) {
+          if (isArray(current2)) {
             if (cbNodes) {
-              const res = cbNodes(current, parent2);
+              const res = cbNodes(current2, parent2);
               if (res) {
                 if (res === "skip") continue;
                 return res;
               }
             }
-            for (let i = current.length - 1; i >= 0; --i) {
-              queue.push(current[i]);
+            for (let i = current2.length - 1; i >= 0; --i) {
+              queue.push(current2[i]);
               parents.push(parent2);
             }
           } else {
-            const res = cbNode(current, parent2);
+            const res = cbNode(current2, parent2);
             if (res) {
               if (res === "skip") continue;
               return res;
             }
-            if (current.kind >= 167) {
-              for (const child of gatherPossibleChildren(current)) {
+            if (current2.kind >= 167) {
+              for (const child of gatherPossibleChildren(current2)) {
                 queue.push(child);
-                parents.push(current);
+                parents.push(current2);
               }
             }
           }
@@ -43409,28 +43409,28 @@ ${lanes.join("\n")}
           let currentArray = sourceFile.statements;
           let currentArrayIndex = 0;
           Debug.assert(currentArrayIndex < currentArray.length);
-          let current = currentArray[currentArrayIndex];
+          let current2 = currentArray[currentArrayIndex];
           let lastQueriedPosition = -1;
           return {
             currentNode(position) {
               if (position !== lastQueriedPosition) {
-                if (current && current.end === position && currentArrayIndex < currentArray.length - 1) {
+                if (current2 && current2.end === position && currentArrayIndex < currentArray.length - 1) {
                   currentArrayIndex++;
-                  current = currentArray[currentArrayIndex];
+                  current2 = currentArray[currentArrayIndex];
                 }
-                if (!current || current.pos !== position) {
+                if (!current2 || current2.pos !== position) {
                   findHighestListElementThatStartsAtPosition(position);
                 }
               }
               lastQueriedPosition = position;
-              Debug.assert(!current || current.pos === position);
-              return current;
+              Debug.assert(!current2 || current2.pos === position);
+              return current2;
             }
           };
           function findHighestListElementThatStartsAtPosition(position) {
             currentArray = void 0;
             currentArrayIndex = -1;
-            current = void 0;
+            current2 = void 0;
             forEachChild(sourceFile, visitNode3, visitArray2);
             return;
             function visitNode3(node) {
@@ -43448,7 +43448,7 @@ ${lanes.join("\n")}
                     if (child.pos === position) {
                       currentArray = array;
                       currentArrayIndex = i;
-                      current = child;
+                      current2 = child;
                       return true;
                     } else {
                       if (child.pos < position && position < child.end) {
@@ -47966,14 +47966,14 @@ ${lanes.join("\n")}
             directoryPathMap.set(path, result);
             const resolvedFileName = getResolvedFileName(result);
             const commonPrefix = resolvedFileName && getCommonPrefix(path, resolvedFileName);
-            let current = path;
-            while (current !== commonPrefix) {
-              const parent2 = getDirectoryPath(current);
-              if (parent2 === current || directoryPathMap.has(parent2)) {
+            let current2 = path;
+            while (current2 !== commonPrefix) {
+              const parent2 = getDirectoryPath(current2);
+              if (parent2 === current2 || directoryPathMap.has(parent2)) {
                 break;
               }
               directoryPathMap.set(parent2, result);
-              current = parent2;
+              current2 = parent2;
             }
           }
           function getCommonPrefix(directory, resolution) {
@@ -56368,21 +56368,21 @@ ${lanes.join("\n")}
             return isUsedInFunctionOrInstancePropertyWorker(usage2, declaration2);
           }
           function isUsedInFunctionOrInstancePropertyWorker(usage2, declaration2) {
-            return !!findAncestor(usage2, (current) => {
-              if (current === declContainer) {
+            return !!findAncestor(usage2, (current2) => {
+              if (current2 === declContainer) {
                 return "quit";
               }
-              if (isFunctionLike(current)) {
-                return !getImmediatelyInvokedFunctionExpression(current);
+              if (isFunctionLike(current2)) {
+                return !getImmediatelyInvokedFunctionExpression(current2);
               }
-              if (isClassStaticBlockDeclaration(current)) {
+              if (isClassStaticBlockDeclaration(current2)) {
                 return declaration2.pos < usage2.pos;
               }
-              const propertyDeclaration = tryCast(current.parent, isPropertyDeclaration);
+              const propertyDeclaration = tryCast(current2.parent, isPropertyDeclaration);
               if (propertyDeclaration) {
-                const initializerOfProperty = propertyDeclaration.initializer === current;
+                const initializerOfProperty = propertyDeclaration.initializer === current2;
                 if (initializerOfProperty) {
-                  if (isStatic(current.parent)) {
+                  if (isStatic(current2.parent)) {
                     if (declaration2.kind === 175) {
                       return true;
                     }
@@ -56391,7 +56391,7 @@ ${lanes.join("\n")}
                       if (isIdentifier(propName) || isPrivateIdentifier(propName)) {
                         const type = getTypeOfSymbol(getSymbolOfDeclaration(declaration2));
                         const staticBlocks = filter(declaration2.parent.members, isClassStaticBlockDeclaration);
-                        if (isPropertyInitializedInStaticBlocks(propName, type, staticBlocks, declaration2.parent.pos, current.pos)) {
+                        if (isPropertyInitializedInStaticBlocks(propName, type, staticBlocks, declaration2.parent.pos, current2.pos)) {
                           return true;
                         }
                       }
@@ -56404,8 +56404,8 @@ ${lanes.join("\n")}
                   }
                 }
               }
-              const decorator = tryCast(current.parent, isDecorator);
-              if (decorator && decorator.expression === current) {
+              const decorator = tryCast(current2.parent, isDecorator);
+              if (decorator && decorator.expression === current2) {
                 if (isParameter(decorator.parent)) {
                   return isUsedInFunctionOrInstancePropertyWorker(decorator.parent.parent.parent, declaration2) ? true : "quit";
                 }
@@ -67886,8 +67886,8 @@ ${lanes.join("\n")}
         function getPropertiesOfUnionOrIntersectionType(type) {
           if (!type.resolvedProperties) {
             const members = createSymbolTable();
-            for (const current of type.types) {
-              for (const prop of getPropertiesOfType(current)) {
+            for (const current2 of type.types) {
+              for (const prop of getPropertiesOfType(current2)) {
                 if (!members.has(prop.escapedName)) {
                   const combinedProp = getPropertyOfUnionOrIntersectionType(
                     type,
@@ -67900,7 +67900,7 @@ ${lanes.join("\n")}
                   }
                 }
               }
-              if (type.flags & 1048576 && getIndexInfosOfType(current).length === 0) {
+              if (type.flags & 1048576 && getIndexInfosOfType(current2).length === 0) {
                 break;
               }
             }
@@ -68281,8 +68281,8 @@ ${lanes.join("\n")}
           let syntheticFlag = 4;
           let checkFlags = isUnion ? 0 : 8;
           let mergedInstantiations = false;
-          for (const current of containingType.types) {
-            const type = getApparentType(current);
+          for (const current2 of containingType.types) {
+            const type = getApparentType(current2);
             if (!(isErrorType(type) || type.flags & 131072)) {
               const prop = getPropertyOfType(type, name, skipObjectFunctionPropertyAugment);
               const modifiers = prop ? getDeclarationModifierFlagsFromSymbol(prop) : 0;
@@ -72207,26 +72207,26 @@ ${lanes.join("\n")}
             if (!nodeIsMissing(node.qualifier)) {
               const nameStack = getIdentifierChain(node.qualifier);
               let currentNamespace = moduleSymbol;
-              let current;
-              while (current = nameStack.shift()) {
+              let current2;
+              while (current2 = nameStack.shift()) {
                 const meaning = nameStack.length ? 1920 : targetMeaning;
                 const mergedResolvedSymbol = getMergedSymbol(resolveSymbol(currentNamespace));
                 const symbolFromVariable = node.isTypeOf || isInJSFile(node) && isExportEquals ? getPropertyOfType(
                   getTypeOfSymbol(mergedResolvedSymbol),
-                  current.escapedText,
+                  current2.escapedText,
                   /*skipObjectFunctionPropertyAugment*/
                   false,
                   /*includeTypeOnlyMembers*/
                   true
                 ) : void 0;
-                const symbolFromModule = node.isTypeOf ? void 0 : getSymbol2(getExportsOfSymbol(mergedResolvedSymbol), current.escapedText, meaning);
+                const symbolFromModule = node.isTypeOf ? void 0 : getSymbol2(getExportsOfSymbol(mergedResolvedSymbol), current2.escapedText, meaning);
                 const next = symbolFromModule ?? symbolFromVariable;
                 if (!next) {
-                  error2(current, Diagnostics.Namespace_0_has_no_exported_member_1, getFullyQualifiedName(currentNamespace), declarationNameToString(current));
+                  error2(current2, Diagnostics.Namespace_0_has_no_exported_member_1, getFullyQualifiedName(currentNamespace), declarationNameToString(current2));
                   return links.resolvedType = errorType;
                 }
-                getNodeLinks(current).resolvedSymbol = next;
-                getNodeLinks(current.parent).resolvedSymbol = next;
+                getNodeLinks(current2).resolvedSymbol = next;
+                getNodeLinks(current2.parent).resolvedSymbol = next;
                 currentNamespace = next;
               }
               links.resolvedType = resolveImportSymbolType(node, links, currentNamespace, targetMeaning);
@@ -82237,21 +82237,21 @@ ${lanes.join("\n")}
           return !!links && contains(links.capturedBlockScopeBindings, getSymbolOfDeclaration(decl));
         }
         function isAssignedInBodyOfForStatement(node, container) {
-          let current = node;
-          while (current.parent.kind === 218) {
-            current = current.parent;
+          let current2 = node;
+          while (current2.parent.kind === 218) {
+            current2 = current2.parent;
           }
           let isAssigned = false;
-          if (isAssignmentTarget(current)) {
+          if (isAssignmentTarget(current2)) {
             isAssigned = true;
-          } else if (current.parent.kind === 225 || current.parent.kind === 226) {
-            const expr = current.parent;
+          } else if (current2.parent.kind === 225 || current2.parent.kind === 226) {
+            const expr = current2.parent;
             isAssigned = expr.operator === 46 || expr.operator === 47;
           }
           if (!isAssigned) {
             return false;
           }
-          return !!findAncestor(current, (n) => n === container ? "quit" : n === container.statement);
+          return !!findAncestor(current2, (n) => n === container ? "quit" : n === container.statement);
         }
         function captureLexicalThis(node, container) {
           getNodeLinks(node).flags |= 2;
@@ -82482,12 +82482,12 @@ ${lanes.join("\n")}
           }
           let nodeCheckFlag = 0;
           if (!container || !isLegalUsageOfSuperExpression(container)) {
-            const current = findAncestor(
+            const current2 = findAncestor(
               node,
               (n) => n === container ? "quit" : n.kind === 168
               /* ComputedPropertyName */
             );
-            if (current && current.kind === 168) {
+            if (current2 && current2.kind === 168) {
               error2(node, Diagnostics.super_cannot_be_referenced_in_a_computed_property_name);
             } else if (isCallExpression2) {
               error2(node, Diagnostics.Super_calls_are_not_permitted_outside_constructors_or_in_nested_functions_inside_constructors);
@@ -82504,9 +82504,9 @@ ${lanes.join("\n")}
           if (isStatic(container) || isCallExpression2) {
             nodeCheckFlag = 32;
             if (!isCallExpression2 && languageVersion >= 2 && languageVersion <= 8 && (isPropertyDeclaration(container) || isClassStaticBlockDeclaration(container))) {
-              forEachEnclosingBlockScopeContainer(node.parent, (current) => {
-                if (!isSourceFile(current) || isExternalOrCommonJsModule(current)) {
-                  getNodeLinks(current).flags |= 2097152;
+              forEachEnclosingBlockScopeContainer(node.parent, (current2) => {
+                if (!isSourceFile(current2) || isExternalOrCommonJsModule(current2)) {
+                  getNodeLinks(current2).flags |= 2097152;
                 }
               });
             }
@@ -83856,8 +83856,8 @@ ${lanes.join("\n")}
           }
           let signatureList;
           const types = type.types;
-          for (const current of types) {
-            const signature = getContextualCallSignature(current, node);
+          for (const current2 of types) {
+            const signature = getContextualCallSignature(current2, node);
             if (signature) {
               if (!signatureList) {
                 signatureList = [signature];
@@ -92828,8 +92828,8 @@ ${lanes.join("\n")}
           let hasNonAmbientClass = false;
           const functionDeclarations = [];
           if (declarations) {
-            for (const current of declarations) {
-              const node = current;
+            for (const current2 of declarations) {
+              const node = current2;
               const inAmbientContext = node.flags & 33554432;
               const inAmbientContextOrInterface = node.parent && (node.parent.kind === 265 || node.parent.kind === 188) || inAmbientContext;
               if (inAmbientContextOrInterface) {
@@ -92867,8 +92867,8 @@ ${lanes.join("\n")}
                   lastSeenNonAmbientDeclaration = node;
                 }
               }
-              if (isInJSFile(current) && isFunctionLike(current) && current.jsDoc) {
-                hasOverloads = length(getJSDocOverloadTags(current)) > 0;
+              if (isInJSFile(current2) && isFunctionLike(current2) && current2.jsDoc) {
+                hasOverloads = length(getJSDocOverloadTags(current2)) > 0;
               }
             }
           }
@@ -94064,8 +94064,8 @@ ${lanes.join("\n")}
           return true;
         }
         function checkIfThisIsCapturedInEnclosingScope(node) {
-          findAncestor(node, (current) => {
-            if (getNodeCheckFlags(current) & 4) {
+          findAncestor(node, (current2) => {
+            if (getNodeCheckFlags(current2) & 4) {
               const isDeclaration2 = node.kind !== 80;
               if (isDeclaration2) {
                 error2(getNameOfDeclaration(node), Diagnostics.Duplicate_identifier_this_Compiler_uses_variable_declaration_this_to_capture_this_reference);
@@ -94078,8 +94078,8 @@ ${lanes.join("\n")}
           });
         }
         function checkIfNewTargetIsCapturedInEnclosingScope(node) {
-          findAncestor(node, (current) => {
-            if (getNodeCheckFlags(current) & 8) {
+          findAncestor(node, (current2) => {
+            if (getNodeCheckFlags(current2) & 8) {
               const isDeclaration2 = node.kind !== 80;
               if (isDeclaration2) {
                 error2(getNameOfDeclaration(node), Diagnostics.Duplicate_identifier_newTarget_Compiler_uses_variable_declaration_newTarget_to_capture_new_target_meta_property_reference);
@@ -95518,11 +95518,11 @@ ${lanes.join("\n")}
         }
         function checkLabeledStatement(node) {
           if (!checkGrammarStatementInAmbientContext(node)) {
-            findAncestor(node.parent, (current) => {
-              if (isFunctionLike(current)) {
+            findAncestor(node.parent, (current2) => {
+              if (isFunctionLike(current2)) {
                 return "quit";
               }
-              if (current.kind === 257 && current.label.escapedText === node.label.escapedText) {
+              if (current2.kind === 257 && current2.label.escapedText === node.label.escapedText) {
                 grammarErrorOnNode(node.label, Diagnostics.Duplicate_label_0, getTextOfNode(node.label));
                 return true;
               }
@@ -101111,16 +101111,16 @@ ${lanes.join("\n")}
           }
         }
         function checkGrammarBreakOrContinueStatement(node) {
-          let current = node;
-          while (current) {
-            if (isFunctionLikeOrClassStaticBlockDeclaration(current)) {
+          let current2 = node;
+          while (current2) {
+            if (isFunctionLikeOrClassStaticBlockDeclaration(current2)) {
               return grammarErrorOnNode(node, Diagnostics.Jump_target_cannot_cross_function_boundary);
             }
-            switch (current.kind) {
+            switch (current2.kind) {
               case 257:
-                if (node.label && current.label.escapedText === node.label.escapedText) {
+                if (node.label && current2.label.escapedText === node.label.escapedText) {
                   const isMisplacedContinueLabel = node.kind === 252 && !isIterationStatement(
-                    current.statement,
+                    current2.statement,
                     /*lookInLabeledStatements*/
                     true
                   );
@@ -101137,7 +101137,7 @@ ${lanes.join("\n")}
                 break;
               default:
                 if (isIterationStatement(
-                  current,
+                  current2,
                   /*lookInLabeledStatements*/
                   false
                 ) && !node.label) {
@@ -101145,7 +101145,7 @@ ${lanes.join("\n")}
                 }
                 break;
             }
-            current = current.parent;
+            current2 = current2.parent;
           }
           if (node.label) {
             const message = node.kind === 253 ? Diagnostics.A_break_statement_can_only_jump_to_a_label_of_an_enclosing_statement : Diagnostics.A_continue_statement_can_only_jump_to_a_label_of_an_enclosing_iteration_statement;
@@ -141326,14 +141326,14 @@ ${lanes.join("\n")}
           const version2 = isString(fileInfo) ? fileInfo : fileInfo.version;
           fileInfos.set(path, version2);
           if (rootIndex < program.root.length) {
-            const current = program.root[rootIndex];
+            const current2 = program.root[rootIndex];
             const fileId = index + 1;
-            if (isArray(current)) {
-              if (current[0] <= fileId && fileId <= current[1]) {
+            if (isArray(current2)) {
+              if (current2[0] <= fileId && fileId <= current2[1]) {
                 addRoot(fileId, path);
-                if (current[1] === fileId) rootIndex++;
+                if (current2[1] === fileId) rootIndex++;
               }
-            } else if (current === fileId) {
+            } else if (current2 === fileId) {
               addRoot(fileId, path);
               rootIndex++;
             }
@@ -149684,11 +149684,11 @@ ${lanes.join("\n")}
         );
       }
       function getTokenAtPositionWorker(sourceFile, position, allowPositionInLeadingTrivia, includePrecedingTokenAtEndPosition, includeEndPosition) {
-        let current = sourceFile;
+        let current2 = sourceFile;
         let foundToken;
         outer:
           while (true) {
-            const children = current.getChildren(sourceFile);
+            const children = current2.getChildren(sourceFile);
             const i = binarySearchKey(children, position, (_, i2) => i2, (middle, _) => {
               const end = children[middle].getEnd();
               if (end < position) {
@@ -149719,10 +149719,10 @@ ${lanes.join("\n")}
               return foundToken;
             }
             if (i >= 0 && children[i]) {
-              current = children[i];
+              current2 = children[i];
               continue outer;
             }
-            return current;
+            return current2;
           }
         function nodeContainsPosition(node, start, end) {
           end ?? (end = node.getEnd());
@@ -152163,21 +152163,21 @@ ${lanes.join("\n")}
       }
       function forEachNameOfDefaultExport(defaultExport2, checker, scriptTarget, cb) {
         let chain;
-        let current = defaultExport2;
+        let current2 = defaultExport2;
         const seen = /* @__PURE__ */ new Set();
-        while (current) {
-          const fromDeclaration = getDefaultLikeExportNameFromDeclaration(current);
+        while (current2) {
+          const fromDeclaration = getDefaultLikeExportNameFromDeclaration(current2);
           if (fromDeclaration) {
             const final2 = cb(fromDeclaration);
             if (final2) return final2;
           }
-          if (current.escapedName !== "default" && current.escapedName !== "export=") {
-            const final2 = cb(current.name);
+          if (current2.escapedName !== "default" && current2.escapedName !== "export=") {
+            const final2 = cb(current2.name);
             if (final2) return final2;
           }
-          chain = append(chain, current);
-          if (!addToSeen(seen, current)) break;
-          current = current.flags & 2097152 ? checker.getImmediateAliasedSymbol(current) : void 0;
+          chain = append(chain, current2);
+          if (!addToSeen(seen, current2)) break;
+          current2 = current2.flags & 2097152 ? checker.getImmediateAliasedSymbol(current2) : void 0;
         }
         for (const symbol of chain ?? emptyArray) {
           if (symbol.parent && isExternalModuleSymbol(symbol.parent)) {
@@ -156837,9 +156837,9 @@ interface Symbol {
           () => getTouchingToken(file, startPosition, () => true)
         ];
         for (const f of currentNodes) {
-          const current = f();
-          const overlappingRange = nodeOverlapsWithStartEnd(current, file, range.pos, range.end);
-          const firstType = findAncestor(current, (node) => node.parent && isTypeNode(node) && !rangeContainsSkipTrivia(range, node.parent, file) && (isCursorRequest || overlappingRange));
+          const current2 = f();
+          const overlappingRange = nodeOverlapsWithStartEnd(current2, file, range.pos, range.end);
+          const firstType = findAncestor(current2, (node) => node.parent && isTypeNode(node) && !rangeContainsSkipTrivia(range, node.parent, file) && (isCursorRequest || overlappingRange));
           if (firstType) {
             return firstType;
           }
@@ -159377,22 +159377,22 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
         });
         return container || expr;
       }
-      function treeToArray(current) {
-        const loop = (current2) => {
-          if (!isBinaryExpression(current2)) {
-            return { nodes: [current2], operators: [], validOperators: true, hasString: isStringLiteral(current2) || isNoSubstitutionTemplateLiteral(current2) };
+      function treeToArray(current2) {
+        const loop = (current22) => {
+          if (!isBinaryExpression(current22)) {
+            return { nodes: [current22], operators: [], validOperators: true, hasString: isStringLiteral(current22) || isNoSubstitutionTemplateLiteral(current22) };
           }
-          const { nodes: nodes2, operators: operators2, hasString: leftHasString, validOperators: leftOperatorValid } = loop(current2.left);
-          if (!(leftHasString || isStringLiteral(current2.right) || isTemplateExpression(current2.right))) {
-            return { nodes: [current2], operators: [], hasString: false, validOperators: true };
+          const { nodes: nodes2, operators: operators2, hasString: leftHasString, validOperators: leftOperatorValid } = loop(current22.left);
+          if (!(leftHasString || isStringLiteral(current22.right) || isTemplateExpression(current22.right))) {
+            return { nodes: [current22], operators: [], hasString: false, validOperators: true };
           }
-          const currentOperatorValid = current2.operatorToken.kind === 40;
+          const currentOperatorValid = current22.operatorToken.kind === 40;
           const validOperators2 = leftOperatorValid && currentOperatorValid;
-          nodes2.push(current2.right);
-          operators2.push(current2.operatorToken);
+          nodes2.push(current22.right);
+          operators2.push(current22.operatorToken);
           return { nodes: nodes2, operators: operators2, hasString: true, validOperators: validOperators2 };
         };
-        const { nodes, operators, validOperators, hasString } = loop(current);
+        const { nodes, operators, validOperators, hasString } = loop(current2);
         return { nodes, operators, isValidConcatenation: validOperators && hasString };
       }
       var copyTrailingOperatorComments = (operators, file) => (index, targetNode) => {
@@ -160011,25 +160011,25 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
           return void 0;
         }
         function checkForStaticContext(nodeToCheck, containingClass) {
-          let current = nodeToCheck;
-          while (current !== containingClass) {
-            if (current.kind === 173) {
-              if (isStatic(current)) {
+          let current2 = nodeToCheck;
+          while (current2 !== containingClass) {
+            if (current2.kind === 173) {
+              if (isStatic(current2)) {
                 rangeFacts |= 32;
               }
               break;
-            } else if (current.kind === 170) {
-              const ctorOrMethod = getContainingFunction(current);
+            } else if (current2.kind === 170) {
+              const ctorOrMethod = getContainingFunction(current2);
               if (ctorOrMethod.kind === 177) {
                 rangeFacts |= 32;
               }
               break;
-            } else if (current.kind === 175) {
-              if (isStatic(current)) {
+            } else if (current2.kind === 175) {
+              if (isStatic(current2)) {
                 rangeFacts |= 32;
               }
             }
-            current = current.parent;
+            current2 = current2.parent;
           }
         }
         function checkNode(nodeToCheck) {
@@ -160228,23 +160228,23 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
         return isArrowFunction(node) ? isFunctionBody(node.body) : isFunctionLikeDeclaration(node) || isSourceFile(node) || isModuleBlock(node) || isClassLike(node);
       }
       function collectEnclosingScopes(range) {
-        let current = isReadonlyArray(range.range) ? first(range.range) : range.range;
+        let current2 = isReadonlyArray(range.range) ? first(range.range) : range.range;
         if (range.facts & 8 && !(range.facts & 16)) {
-          const containingClass = getContainingClass(current);
+          const containingClass = getContainingClass(current2);
           if (containingClass) {
-            const containingFunction = findAncestor(current, isFunctionLikeDeclaration);
+            const containingFunction = findAncestor(current2, isFunctionLikeDeclaration);
             return containingFunction ? [containingFunction, containingClass] : [containingClass];
           }
         }
         const scopes = [];
         while (true) {
-          current = current.parent;
-          if (current.kind === 170) {
-            current = findAncestor(current, (parent2) => isFunctionLikeDeclaration(parent2)).parent;
+          current2 = current2.parent;
+          if (current2.kind === 170) {
+            current2 = findAncestor(current2, (parent2) => isFunctionLikeDeclaration(parent2)).parent;
           }
-          if (isScope(current)) {
-            scopes.push(current);
-            if (current.kind === 308) {
+          if (isScope(current2)) {
+            scopes.push(current2);
+            if (current2.kind === 308) {
               return scopes;
             }
           }
@@ -173108,11 +173108,11 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
       function getCallName(sourceFile, start) {
         const token = getTokenAtPosition(sourceFile, start);
         if (isPropertyAccessExpression(token.parent)) {
-          let current = token.parent;
-          while (isPropertyAccessExpression(current.parent)) {
-            current = current.parent;
+          let current2 = token.parent;
+          while (isPropertyAccessExpression(current2.parent)) {
+            current2 = current2.parent;
           }
-          return current.name;
+          return current2.name;
         }
         if (isIdentifier(token)) {
           return token;
@@ -176826,15 +176826,15 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
       }
       function flattenInvalidBinaryExpr(node) {
         const children = [];
-        let current = node;
+        let current2 = node;
         while (true) {
-          if (isBinaryExpression(current) && nodeIsMissing(current.operatorToken) && current.operatorToken.kind === 28) {
-            children.push(current.left);
-            if (isJsxChild(current.right)) {
-              children.push(current.right);
+          if (isBinaryExpression(current2) && nodeIsMissing(current2.operatorToken) && current2.operatorToken.kind === 28) {
+            children.push(current2.left);
+            if (isJsxChild(current2.right)) {
+              children.push(current2.right);
               return children;
-            } else if (isBinaryExpression(current.right)) {
-              current = current.right;
+            } else if (isBinaryExpression(current2.right)) {
+              current2 = current2.right;
               continue;
             } else return void 0;
           } else return void 0;
@@ -179033,13 +179033,13 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
       function getLabelStatementCompletions(node) {
         const entries = [];
         const uniques = /* @__PURE__ */ new Map();
-        let current = node;
-        while (current) {
-          if (isFunctionLike(current)) {
+        let current2 = node;
+        while (current2) {
+          if (isFunctionLike(current2)) {
             break;
           }
-          if (isLabeledStatement(current)) {
-            const name = current.label.text;
+          if (isLabeledStatement(current2)) {
+            const name = current2.label.text;
             if (!uniques.has(name)) {
               uniques.set(name, true);
               entries.push({
@@ -179050,7 +179050,7 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
               });
             }
           }
-          current = current.parent;
+          current2 = current2.parent;
         }
         return entries;
       }
@@ -181769,8 +181769,8 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
             return node;
         }
       }
-      function getAlreadyUsedTypesInStringLiteralUnion(union, current) {
-        return mapDefined(union.types, (type) => type !== current && isLiteralTypeNode(type) && isStringLiteral(type.literal) ? type.literal.text : void 0);
+      function getAlreadyUsedTypesInStringLiteralUnion(union, current2) {
+        return mapDefined(union.types, (type) => type !== current2 && isLiteralTypeNode(type) && isStringLiteral(type.literal) ? type.literal.text : void 0);
       }
       function getStringLiteralCompletionsFromSignature(call, arg, argumentInfo, checker) {
         let isNewIdentifier = false;
@@ -187782,21 +187782,21 @@ ${content}
       }
       function addNodeOutliningSpans(sourceFile, cancellationToken, out) {
         let depthRemaining = 40;
-        let current = 0;
+        let current2 = 0;
         const statements = sourceFile.statements;
         const n = statements.length;
-        while (current < n) {
-          while (current < n && !isAnyImportSyntax(statements[current])) {
-            visitNode3(statements[current]);
-            current++;
+        while (current2 < n) {
+          while (current2 < n && !isAnyImportSyntax(statements[current2])) {
+            visitNode3(statements[current2]);
+            current2++;
           }
-          if (current === n) break;
-          const firstImport = current;
-          while (current < n && isAnyImportSyntax(statements[current])) {
-            visitNode3(statements[current]);
-            current++;
+          if (current2 === n) break;
+          const firstImport = current2;
+          while (current2 < n && isAnyImportSyntax(statements[current2])) {
+            visitNode3(statements[current2]);
+            current2++;
           }
-          const lastImport = current - 1;
+          const lastImport = current2 - 1;
           if (lastImport !== firstImport) {
             out.push(createOutliningSpanFromBounds(
               findChildOfKind(statements[firstImport], 102, sourceFile).getStart(sourceFile),
@@ -191808,12 +191808,12 @@ ${options.prefix}` : "\n" : options.prefix
           );
         }
         function isOnToken() {
-          const current = lastTokenInfo ? lastTokenInfo.token.kind : scanner2.getToken();
-          return current !== 1 && !isTrivia(current);
+          const current2 = lastTokenInfo ? lastTokenInfo.token.kind : scanner2.getToken();
+          return current2 !== 1 && !isTrivia(current2);
         }
         function isOnEOF() {
-          const current = lastTokenInfo ? lastTokenInfo.token.kind : scanner2.getToken();
-          return current === 1;
+          const current2 = lastTokenInfo ? lastTokenInfo.token.kind : scanner2.getToken();
+          return current2 === 1;
         }
         function fixTokenKind(tokenInfo, container) {
           if (isToken(container) && tokenInfo.token.kind !== container.kind) {
@@ -193917,11 +193917,11 @@ ${options.prefix}` : "\n" : options.prefix
         return precedingToken && precedingToken.kind === expectedTokenKind && end === precedingToken.getEnd() ? precedingToken : void 0;
       }
       function findOutermostNodeWithinListLevel(node) {
-        let current = node;
-        while (current && current.parent && current.parent.end === node.end && !isListElement(current.parent, current)) {
-          current = current.parent;
+        let current2 = node;
+        while (current2 && current2.parent && current2.parent.end === node.end && !isListElement(current2.parent, current2)) {
+          current2 = current2.parent;
         }
-        return current;
+        return current2;
       }
       function isListElement(parent2, node) {
         switch (parent2.kind) {
@@ -194950,34 +194950,34 @@ ${options.prefix}` : "\n" : options.prefix
           return firstNonWhitespaceCharacterCode === 42 ? column - 1 : column;
         }
         function getBlockIndent(sourceFile, position, options) {
-          let current = position;
-          while (current > 0) {
-            const char = sourceFile.text.charCodeAt(current);
+          let current2 = position;
+          while (current2 > 0) {
+            const char = sourceFile.text.charCodeAt(current2);
             if (!isWhiteSpaceLike(char)) {
               break;
             }
-            current--;
+            current2--;
           }
-          const lineStart = getLineStartPositionForPosition(current, sourceFile);
-          return findFirstNonWhitespaceColumn(lineStart, current, sourceFile, options);
+          const lineStart = getLineStartPositionForPosition(current2, sourceFile);
+          return findFirstNonWhitespaceColumn(lineStart, current2, sourceFile, options);
         }
         function getSmartIndent(sourceFile, position, precedingToken, lineAtPosition, assumeNewLineBeforeCloseBrace, options) {
           let previous;
-          let current = precedingToken;
-          while (current) {
-            if (positionBelongsToNode(current, position, sourceFile) && shouldIndentChildNode(
+          let current2 = precedingToken;
+          while (current2) {
+            if (positionBelongsToNode(current2, position, sourceFile) && shouldIndentChildNode(
               options,
-              current,
+              current2,
               previous,
               sourceFile,
               /*isNextChild*/
               true
             )) {
-              const currentStart = getStartLineAndCharacterForNode(current, sourceFile);
-              const nextTokenKind = nextTokenIsCurlyBraceOnSameLineAsCursor(precedingToken, current, lineAtPosition, sourceFile);
+              const currentStart = getStartLineAndCharacterForNode(current2, sourceFile);
+              const nextTokenKind = nextTokenIsCurlyBraceOnSameLineAsCursor(precedingToken, current2, lineAtPosition, sourceFile);
               const indentationDelta = nextTokenKind !== 0 ? assumeNewLineBeforeCloseBrace && nextTokenKind === 2 ? options.indentSize : 0 : lineAtPosition !== currentStart.line ? options.indentSize : 0;
               return getIndentationForNodeWorker(
-                current,
+                current2,
                 currentStart,
                 /*ignoreActualIndentationRange*/
                 void 0,
@@ -194989,7 +194989,7 @@ ${options.prefix}` : "\n" : options.prefix
               );
             }
             const actualIndentation = getActualIndentationForListItem(
-              current,
+              current2,
               sourceFile,
               options,
               /*listIndentsChild*/
@@ -194998,8 +194998,8 @@ ${options.prefix}` : "\n" : options.prefix
             if (actualIndentation !== -1) {
               return actualIndentation;
             }
-            previous = current;
-            current = current.parent;
+            previous = current2;
+            current2 = current2.parent;
           }
           return getBaseIndentation(options);
         }
@@ -195022,36 +195022,36 @@ ${options.prefix}` : "\n" : options.prefix
           return options.baseIndentSize || 0;
         }
         SmartIndenter2.getBaseIndentation = getBaseIndentation;
-        function getIndentationForNodeWorker(current, currentStart, ignoreActualIndentationRange, indentationDelta, sourceFile, isNextChild, options) {
+        function getIndentationForNodeWorker(current2, currentStart, ignoreActualIndentationRange, indentationDelta, sourceFile, isNextChild, options) {
           var _a;
-          let parent2 = current.parent;
+          let parent2 = current2.parent;
           while (parent2) {
             let useActualIndentation = true;
             if (ignoreActualIndentationRange) {
-              const start = current.getStart(sourceFile);
+              const start = current2.getStart(sourceFile);
               useActualIndentation = start < ignoreActualIndentationRange.pos || start > ignoreActualIndentationRange.end;
             }
-            const containingListOrParentStart = getContainingListOrParentStart(parent2, current, sourceFile);
-            const parentAndChildShareLine = containingListOrParentStart.line === currentStart.line || childStartsOnTheSameLineWithElseInIfStatement(parent2, current, currentStart.line, sourceFile);
+            const containingListOrParentStart = getContainingListOrParentStart(parent2, current2, sourceFile);
+            const parentAndChildShareLine = containingListOrParentStart.line === currentStart.line || childStartsOnTheSameLineWithElseInIfStatement(parent2, current2, currentStart.line, sourceFile);
             if (useActualIndentation) {
-              const firstListChild = (_a = getContainingList(current, sourceFile)) == null ? void 0 : _a[0];
+              const firstListChild = (_a = getContainingList(current2, sourceFile)) == null ? void 0 : _a[0];
               const listIndentsChild = !!firstListChild && getStartLineAndCharacterForNode(firstListChild, sourceFile).line > containingListOrParentStart.line;
-              let actualIndentation = getActualIndentationForListItem(current, sourceFile, options, listIndentsChild);
+              let actualIndentation = getActualIndentationForListItem(current2, sourceFile, options, listIndentsChild);
               if (actualIndentation !== -1) {
                 return actualIndentation + indentationDelta;
               }
-              actualIndentation = getActualIndentationForNode(current, parent2, currentStart, parentAndChildShareLine, sourceFile, options);
+              actualIndentation = getActualIndentationForNode(current2, parent2, currentStart, parentAndChildShareLine, sourceFile, options);
               if (actualIndentation !== -1) {
                 return actualIndentation + indentationDelta;
               }
             }
-            if (shouldIndentChildNode(options, parent2, current, sourceFile, isNextChild) && !parentAndChildShareLine) {
+            if (shouldIndentChildNode(options, parent2, current2, sourceFile, isNextChild) && !parentAndChildShareLine) {
               indentationDelta += options.indentSize;
             }
-            const useTrueStart = isArgumentAndStartLineOverlapsExpressionBeingCalled(parent2, current, currentStart.line, sourceFile);
-            current = parent2;
-            parent2 = current.parent;
-            currentStart = useTrueStart ? sourceFile.getLineAndCharacterOfPosition(current.getStart(sourceFile)) : containingListOrParentStart;
+            const useTrueStart = isArgumentAndStartLineOverlapsExpressionBeingCalled(parent2, current2, currentStart.line, sourceFile);
+            current2 = parent2;
+            parent2 = current2.parent;
+            currentStart = useTrueStart ? sourceFile.getLineAndCharacterOfPosition(current2.getStart(sourceFile)) : containingListOrParentStart;
           }
           return indentationDelta + getBaseIndentation(options);
         }
@@ -195068,8 +195068,8 @@ ${options.prefix}` : "\n" : options.prefix
             return -1;
           }
         }
-        function getActualIndentationForNode(current, parent2, currentLineAndChar, parentAndChildShareLine, sourceFile, options) {
-          const useActualIndentation = (isDeclaration(current) || isStatementButNotDeclaration(current)) && (parent2.kind === 308 || !parentAndChildShareLine);
+        function getActualIndentationForNode(current2, parent2, currentLineAndChar, parentAndChildShareLine, sourceFile, options) {
+          const useActualIndentation = (isDeclaration(current2) || isStatementButNotDeclaration(current2)) && (parent2.kind === 308 || !parentAndChildShareLine);
           if (!useActualIndentation) {
             return -1;
           }
@@ -195081,8 +195081,8 @@ ${options.prefix}` : "\n" : options.prefix
           NextTokenKind2[NextTokenKind2["OpenBrace"] = 1] = "OpenBrace";
           NextTokenKind2[NextTokenKind2["CloseBrace"] = 2] = "CloseBrace";
         })(NextTokenKind || (NextTokenKind = {}));
-        function nextTokenIsCurlyBraceOnSameLineAsCursor(precedingToken, current, lineAtPosition, sourceFile) {
-          const nextToken = findNextToken(precedingToken, current, sourceFile);
+        function nextTokenIsCurlyBraceOnSameLineAsCursor(precedingToken, current2, lineAtPosition, sourceFile) {
+          const nextToken = findNextToken(precedingToken, current2, sourceFile);
           if (!nextToken) {
             return 0;
           }
@@ -213876,11 +213876,27 @@ function projectOf(root, abs) {
 }
 var Session = class {
   root = ".";
+  /** Sorted by `config`, because the order programs are built in decides nothing (rule 66). */
   projects = [];
-  /** `cacheKey(path)` -> the source file the program parsed, so both passes share one AST. */
+  /** How many programs have been built this session, so a rebuild can be said, not guessed. */
+  builds = 0;
+  /** Said before each build: on stderr and as a `progress` frame (see `main.ts`). */
+  onBuild = () => {
+  };
+  /** Called with the live project just before it is let go. The edge pass harvests here. */
+  beforeRelease = () => {
+  };
+  live = null;
+  /** `cacheKey(abs)` -> the project whose root it is. A file is the root of one project. */
+  ownerOf = /* @__PURE__ */ new Map();
+  /** An absolute root -> the string the host named it by, which `order` hands back. */
+  given = /* @__PURE__ */ new Map();
+  /** `cacheKey(path)` -> a parsed file, for the live project only; cleared on release. */
   byPath = /* @__PURE__ */ new Map();
+  /** The standard library, parsed once for the session (see the class comment). */
+  libs = /* @__PURE__ */ new Map();
   /**
-   * Build one program per project over `files`.
+   * Group `files` by project, and build nothing.
    *
    * Returns a line per project for the `opened` frame's `diagnostics`, which has carried
    * the field since chunk 9 and never had anything to put in it. A reader that says how it
@@ -213888,12 +213904,16 @@ var Session = class {
    * resolution rate has no explanation (design rule 1).
    */
   open(root, files) {
+    this.release();
     this.root = root;
     this.projects = [];
-    this.byPath.clear();
+    this.ownerOf.clear();
+    this.given.clear();
+    this.builds = 0;
     const groups = /* @__PURE__ */ new Map();
     for (const f of files) {
       const abs = (0, import_node_path.resolve)(f);
+      this.given.set(abs, f);
       const config = projectOf(root, abs) ?? "";
       const bucket = groups.get(config);
       if (bucket === void 0) groups.set(config, [abs]);
@@ -213904,21 +213924,61 @@ var Session = class {
       said.push("no TypeScript standard library is carried in this bundle \u2014 every value typed through Array, Promise or the DOM will be `any`");
     }
     for (const config of [...groups.keys()].sort()) {
-      const roots = groups.get(config) ?? [];
-      const options = optionsFor(config === "" ? null : config);
-      const host = this.compilerHost(options);
-      const program = import_typescript5.default.createProgram(roots, options, host);
-      this.projects.push({
-        config,
-        program,
-        checker: program.getTypeChecker(),
-        roots
-      });
+      const project = { config, roots: groups.get(config) ?? [] };
+      this.projects.push(project);
+      for (const abs of project.roots) this.ownerOf.set(cacheKey(abs), project);
       said.push(
-        `${config === "" ? "(no tsconfig)" : relPath(root, config)}: ${roots.length} file${roots.length === 1 ? "" : "s"}`
+        `${this.nameOf(project)}: ${project.roots.length} file${project.roots.length === 1 ? "" : "s"}`
       );
     }
     return said;
+  }
+  /**
+   * Every file, in the order this reader would like to be asked for them: project by
+   * project, so each is built once. The host sorts by it (`opened.order`); a request out of
+   * this order is still answered correctly, at the price of a rebuild.
+   */
+  order() {
+    return this.projects.flatMap((p) => p.roots.map((abs) => this.given.get(abs) ?? abs));
+  }
+  /** The project a file is the root of, or `undefined` for one the host never named. */
+  projectOfFile(abs) {
+    return this.ownerOf.get(cacheKey((0, import_node_path.resolve)(abs)));
+  }
+  /** The project's name as a reader would say it: its tsconfig, relative, or `(no tsconfig)`. */
+  nameOf(project) {
+    return project.config === "" ? "(no tsconfig)" : relPath(this.root, project.config);
+  }
+  /**
+   * Make `project` the live one, letting the previous one go first.
+   *
+   * **The release comes before the build**, or the peak is two projects rather than one —
+   * and the two largest of emir's are a third of what killed it.
+   */
+  visit(project) {
+    if (this.live !== null && this.live.project === project) return this.live;
+    this.release();
+    const n = this.projects.indexOf(project) + 1;
+    this.onBuild(
+      `building the program for ${this.nameOf(project)} (${n} of ${this.projects.length}, ${project.roots.length} file${project.roots.length === 1 ? "" : "s"})`
+    );
+    const options = optionsFor(project.config === "" ? null : project.config);
+    const host = this.compilerHost(options);
+    const program = import_typescript5.default.createProgram(project.roots, options, host);
+    this.builds += 1;
+    this.live = { project, program, checker: program.getTypeChecker() };
+    return this.live;
+  }
+  /** Let the live project go, after `beforeRelease` has had it. Idempotent. */
+  release() {
+    const live = this.live;
+    if (live === null) return;
+    try {
+      this.beforeRelease(live);
+    } finally {
+      this.live = null;
+      this.byPath.clear();
+    }
   }
   /**
    * A compiler host that reads through `readSource` and parses through `makeSourceFile`.
@@ -213928,7 +213988,9 @@ var Session = class {
    * compilation is a different string from the one the host hashed. The parse is
    * `extract.ts`' own, so the tree the checker reasons about and the tree the extractor
    * walks are the **same objects** and a declaration can be matched by node identity
-   * rather than by re-deriving a line.
+   * rather than by re-deriving a line — inside the one live project. Across projects it is
+   * matched by position, because every parse of one text by this one function lays it out
+   * the same way (`edges.ts`' `anchorKey`).
    */
   compilerHost(options) {
     const host = import_typescript5.default.createCompilerHost(
@@ -213937,6 +213999,7 @@ var Session = class {
       true
     );
     const cache = this.byPath;
+    const libs = this.libs;
     const libOf = (fileName) => fileName.startsWith(LIB_DIR) ? TS_LIBS[fileName.slice(LIB_DIR.length + 1)] : void 0;
     host.getDefaultLibLocation = () => LIB_DIR;
     host.getDefaultLibFileName = (o) => `${LIB_DIR}/${import_typescript5.default.getDefaultLibFileName(o)}`;
@@ -213951,10 +214014,10 @@ var Session = class {
       }
     };
     host.getSourceFile = (fileName, _languageVersion, onError) => {
-      const held = cache.get(cacheKey(fileName));
+      const lib = libOf(fileName);
+      const held = lib !== void 0 ? libs.get(cacheKey(fileName)) : cache.get(cacheKey(fileName));
       if (held !== void 0) return held;
       let text;
-      const lib = libOf(fileName);
       if (lib !== void 0) {
         text = lib;
       } else {
@@ -213966,22 +214029,25 @@ var Session = class {
         }
       }
       const sf = makeSourceFile(fileName, text);
-      cache.set(cacheKey(fileName), sf);
+      if (lib !== void 0) libs.set(cacheKey(fileName), sf);
+      else cache.set(cacheKey(fileName), sf);
       return sf;
     };
     return host;
   }
   /**
-   * The source file for one path, **from the program when a program holds it**.
+   * The source file for one path, **from its own project's program**, built if need be.
    *
-   * A file the host asked about that no program holds is parsed on its own, which is what
-   * happens when nothing has been opened — the shape chunk 9's tests drive. A file a
-   * program holds whose text is not what the host just read is refused rather than
-   * reconciled: the two passes would then be walking different trees, and every id the
-   * edge pass minted for it would name a call site the map does not have.
+   * A file no project holds as a root is parsed on its own, which is what happens when
+   * nothing has been opened — the shape chunk 9's tests drive. A file whose text is not
+   * what the host just read is refused rather than reconciled: the two passes would then
+   * be walking different trees, and every id the edge pass minted for it would name a call
+   * site the map does not have.
    */
   sourceFile(abs, rel, source) {
-    const held = this.byPath.get(cacheKey(abs));
+    const project = this.projectOfFile(abs);
+    if (project === void 0) return makeSourceFile(rel, source);
+    const held = this.visit(project).program.getSourceFile((0, import_node_path.resolve)(abs));
     if (held === void 0) return makeSourceFile(rel, source);
     if (held.text !== source) {
       throw new Error(
@@ -213991,32 +214057,45 @@ var Session = class {
     return held;
   }
   /**
-   * The checker of the project holding one file, for the **extraction** pass.
+   * The checker of the project a file is the root of, for the **extraction** pass.
    *
-   * Chunk 10 needed a checker only in the edge sweep, which walks each project in turn and
-   * has one to hand. Chunk 11c needs one per `extract` request, because a boundary can
-   * now be a fact about the package a call resolves into (`pkg.ts`) and boundaries are
-   * per-file facts — so the answer has to be available where the file is read.
+   * Chunk 10 needed a checker only in the edge sweep. Chunk 11c needs one per `extract`
+   * request, because a boundary can be a fact about the package a call resolves into
+   * (`pkg.ts`) and boundaries are per-file facts — so the answer has to be available where
+   * the file is read.
+   *
+   * **The file's own project, not the first program that happens to hold it.** Until
+   * 2026-11-20 this walked every built program and returned the first containing the file,
+   * which for a package imported across a monorepo was whichever importer sorted first —
+   * another project's compiler options deciding this file's boundaries.
    *
    * `undefined` where nothing has been opened, which is the shape chunk 9's tests drive
    * and is a real answer: no checker, no package rules, and the name rules decide alone.
    */
   checkerFor(abs) {
-    const at = (0, import_node_path.resolve)(abs);
-    for (const project of this.projects) {
-      if (project.program.getSourceFile(at) !== void 0) return project.checker;
-    }
-    return void 0;
+    const project = this.projectOfFile(abs);
+    return project === void 0 ? void 0 : this.visit(project).checker;
   }
   close() {
+    this.beforeRelease = () => {
+    };
+    this.release();
     this.projects = [];
-    this.byPath.clear();
+    this.ownerOf.clear();
+    this.libs.clear();
   }
 };
 
 // src/edges.ts
 function callee(node) {
   return import_typescript6.default.isJsxSelfClosingElement(node) || import_typescript6.default.isJsxOpeningElement(node) ? node.tagName : node.expression;
+}
+function fileKey(node) {
+  const sf = node.getSourceFile();
+  return sf === void 0 ? null : cacheKey(sf.fileName);
+}
+function anchorKey(file, node) {
+  return `${file}#${node.pos}-${node.end}-${node.kind}`;
 }
 function anchorsOf(decls, anchors) {
   const out = [];
@@ -214039,45 +214118,81 @@ function namesARoutine(node) {
 }
 function climb(node, anchors) {
   if (!namesARoutine(node)) return null;
+  const file = fileKey(node);
+  if (file === null) return null;
   let at = node;
   while (at !== void 0 && !import_typescript6.default.isSourceFile(at)) {
-    const hit = anchors.get(at);
+    const hit = anchors.get(anchorKey(file, at));
     if (hit !== void 0) return hit;
     if (import_typescript6.default.isFunctionLike(at)) return null;
     at = at.parent;
   }
   return null;
 }
-function collectEdges(session2, rules2) {
-  const anchors = /* @__PURE__ */ new Map();
-  const where = /* @__PURE__ */ new Map();
-  const pending = [];
-  const failed = [];
-  for (const project of session2.projects) {
-    for (const abs of project.roots) {
-      const sf = project.program.getSourceFile(abs);
+var Harvester = class {
+  constructor(session2, rules2) {
+    this.session = session2;
+    this.rules = rules2;
+  }
+  anchors = /* @__PURE__ */ new Map();
+  where = /* @__PURE__ */ new Map();
+  taken = /* @__PURE__ */ new Map();
+  /** The first pass: every routine of every project, from a parse with no checker. */
+  collectAnchors() {
+    this.anchors.clear();
+    this.where.clear();
+    this.taken.clear();
+    for (const project of this.session.projects) {
+      for (const abs of project.roots) {
+        let text;
+        try {
+          text = readSource(abs);
+        } catch {
+          continue;
+        }
+        const sf = makeSourceFile(abs, text);
+        const file = cacheKey(sf.fileName);
+        let ex;
+        try {
+          ex = walkFile(relPath(this.session.root, abs), text, this.rules, sf);
+        } catch {
+          continue;
+        }
+        for (const [node, routine] of ex.anchors) this.anchors.set(anchorKey(file, node), routine);
+        for (const routine of ex.routines) {
+          this.where.set(routine, {
+            file: routine.file,
+            line: routine.line_start,
+            name: routine.name
+          });
+        }
+      }
+    }
+  }
+  /** The second pass, over the live project. Taken once; a rebuild does not take it again. */
+  harvest(live) {
+    if (this.taken.has(live.project)) return;
+    const { program, checker } = live;
+    const anchors = this.anchors;
+    const where = this.where;
+    const failed = [];
+    const pending = [];
+    for (const abs of live.project.roots) {
+      const sf = program.getSourceFile(abs);
       if (sf === void 0) {
-        failed.push(relPath(session2.root, abs));
+        failed.push(relPath(this.session.root, abs));
         continue;
       }
-      const rel = relPath(session2.root, abs);
+      const rel = relPath(this.session.root, abs);
       let ex;
       try {
-        ex = walkFile(rel, sf.text, rules2, sf, project.checker);
+        ex = walkFile(rel, sf.text, this.rules, sf, checker);
       } catch {
         failed.push(rel);
         continue;
       }
-      for (const [node, routine] of ex.anchors) anchors.set(node, routine);
-      for (const routine of ex.routines) {
-        where.set(routine, {
-          file: routine.file,
-          line: routine.line_start,
-          name: routine.name
-        });
-      }
       pending.push({
-        checker: project.checker,
+        checker,
         // **A call that touches a boundary is never also an internal edge** (rule 2), and
         // this reader already said which ones those are. The host suppresses them before
         // any resolver sees them, so an edge supplied for one would be work nobody reads
@@ -214089,67 +214204,84 @@ function collectEdges(session2, rules2) {
         }))
       });
     }
-  }
-  const edges = [];
-  let outside = 0;
-  let unknown = 0;
-  for (const group of pending) {
-    for (const call of group.calls) {
-      const answer = resolveOne(group.checker, call.node, anchors);
-      if (answer === "unknown") {
-        unknown += 1;
+    const edges = [];
+    let outside = 0;
+    let unknown = 0;
+    for (const group of pending) {
+      for (const call of group.calls) {
+        const answer = resolveOne(group.checker, call.node, anchors);
+        if (answer === "unknown") {
+          unknown += 1;
+          edges.push({
+            site_id: call.site_id,
+            caller_id: call.caller_id,
+            reason: "untyped",
+            how: "symbol; the checker could not say: a call through `any`, a computed name, or a name the compilation does not hold"
+          });
+          continue;
+        }
+        if (typeof answer === "object" && "outside" in answer) {
+          outside += 1;
+          edges.push({
+            site_id: call.site_id,
+            caller_id: call.caller_id,
+            reason: "outside",
+            frontier: answer.outside,
+            how: "symbol; declared outside this map"
+          });
+          continue;
+        }
+        if (typeof answer === "number") {
+          unknown += 1;
+          edges.push({
+            site_id: call.site_id,
+            caller_id: call.caller_id,
+            candidates: answer,
+            how: "symbol"
+          });
+          continue;
+        }
+        const target = where.get(answer.routine);
+        if (target === void 0) {
+          unknown += 1;
+          edges.push({
+            site_id: call.site_id,
+            caller_id: call.caller_id,
+            reason: "unfollowed",
+            how: "symbol; a routine this reader found and could not place"
+          });
+          continue;
+        }
         edges.push({
           site_id: call.site_id,
           caller_id: call.caller_id,
-          reason: "untyped",
-          how: "symbol; the checker could not say: a call through `any`, a computed name, or a name the compilation does not hold"
+          file: target.file,
+          line: target.line,
+          name: target.name,
+          how: answer.how
         });
-        continue;
       }
-      if (typeof answer === "object" && "outside" in answer) {
-        outside += 1;
-        edges.push({
-          site_id: call.site_id,
-          caller_id: call.caller_id,
-          reason: "outside",
-          frontier: answer.outside,
-          how: "symbol; declared outside this map"
-        });
-        continue;
-      }
-      if (typeof answer === "number") {
-        unknown += 1;
-        edges.push({
-          site_id: call.site_id,
-          caller_id: call.caller_id,
-          candidates: answer,
-          how: "symbol"
-        });
-        continue;
-      }
-      const target = where.get(answer.routine);
-      if (target === void 0) {
-        unknown += 1;
-        edges.push({
-          site_id: call.site_id,
-          caller_id: call.caller_id,
-          reason: "unfollowed",
-          how: "symbol; a routine this reader found and could not place"
-        });
-        continue;
-      }
-      edges.push({
-        site_id: call.site_id,
-        caller_id: call.caller_id,
-        file: target.file,
-        line: target.line,
-        name: target.name,
-        how: answer.how
-      });
     }
+    this.taken.set(live.project, { edges, outside, unknown, failed });
   }
-  return { edges, outside, unknown, failed };
-}
+  /** The `edges` request: every project harvested, then all of it, in project order. */
+  finish() {
+    for (const project of this.session.projects) {
+      if (!this.taken.has(project)) this.session.visit(project);
+    }
+    this.session.release();
+    const out = { edges: [], outside: 0, unknown: 0, failed: [] };
+    for (const project of this.session.projects) {
+      const h = this.taken.get(project);
+      if (h === void 0) continue;
+      for (const e of h.edges) out.edges.push(e);
+      out.outside += h.outside;
+      out.unknown += h.unknown;
+      out.failed.push(...h.failed);
+    }
+    return out;
+  }
+};
 function resolveOne(checker, node, anchors) {
   let answered = false;
   let far;
@@ -214204,15 +214336,21 @@ var SCHEMA_VERSION = 20;
 // src/main.ts
 var PROTOCOL = 1;
 var LANG = "typescript";
-var VERSION = "1.3.0";
+var VERSION = "1.4.0";
 var session = new Session();
 var rules = parseRules({});
+var harvester = new Harvester(session, rules);
+var current;
 function send(frame) {
   process.stdout.write(JSON.stringify(frame) + "\n");
 }
 function note(text) {
   process.stderr.write(text + "\n");
 }
+session.onBuild = (detail) => {
+  note(detail);
+  send({ t: "progress", id: current, detail });
+};
 function onHello() {
   return {
     t: "ready",
@@ -214236,11 +214374,18 @@ function onOpen(frame) {
     diagnostics.push("no boundary rules arrived with this session");
   }
   diagnostics.push(...session.open(session.root, files));
+  harvester = new Harvester(session, rules);
+  session.beforeRelease = (live) => harvester.harvest(live);
+  harvester.collectAnchors();
   return {
     t: "opened",
     files: files.length,
     program_ms: Date.now() - started,
-    diagnostics
+    diagnostics,
+    // **The order this reader reads best in**: project by project, so each is built once.
+    // The host sorts what it asks for by it; asked out of it, the answer is the same and
+    // costs a rebuild.
+    order: session.order()
   };
 }
 function onExtract(frame) {
@@ -214272,7 +214417,7 @@ ${err.stack ?? ""}`.trim() : String(err)
   return { t: "facts", hash: echoed, facts };
 }
 function onEdges(id) {
-  const harvest = collectEdges(session, rules);
+  const harvest = harvester.finish();
   for (const edge of harvest.edges) send({ t: "edge", id, edge });
   if (harvest.failed.length) {
     note(`the edge pass could not walk ${harvest.failed.length} file(s): ` + harvest.failed.slice(0, 20).join(", "));
@@ -214310,6 +214455,7 @@ function main() {
       return;
     }
     const id = frame.id;
+    current = id;
     if (frame.t === "close") {
       session.close();
       send({ t: "closed", id });

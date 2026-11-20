@@ -1415,12 +1415,15 @@ def test_both_passes_find_one_tree_whatever_the_separator():
     run cannot see it, because there both spellings are the same string.
 
     So it is held over the source rather than by behaviour: every read and write of the
-    shared cache goes through `cacheKey`, and `cacheKey` folds the platform separator.
+    shared cache goes through `cacheKey`, and `cacheKey` folds the platform separator. Since
+    2026-11-20 there are three such maps — the live project's parses, the standard library
+    kept across projects, and which project owns a file — and all three are held to it.
     """
     program = (Path(ingest.__file__).parent.parent / "plugins" / "typescript" / "src"
                / "program.ts").read_text(encoding="utf-8")
     import re
-    touches = re.findall(r"\b(?:byPath|cache)\.(?:get|set|has|delete)\(([^,)]*)", program)
+    touches = re.findall(r"\b(?:byPath|cache|libs|ownerOf)\.(?:get|set|has|delete)\(([^,)]*)",
+                         program)
     assert touches, "the shared cache is no longer reached the way this test reads it"
     unkeyed = [arg for arg in touches if not arg.strip().startswith("cacheKey(")]
     assert not unkeyed, f"the shared cache is reached by a raw path: {unkeyed}"
@@ -1525,3 +1528,179 @@ def test_a_declaration_the_checker_made_itself_does_not_take_the_edge_pass_down(
     site = next(c for c in facts["heading.tsx"].calls if c.callee_expr == "Tag")
     (edge,) = [e for e in edges if e.site_id == site.site_id]
     assert (edge.reason, edge.frontier, edge.file) == ("outside", "Tag", "")
+
+
+# ------------------------------------------- one project at a time (2026-11-20) --- #
+#
+# emir's sixteen `tsconfig.json` projects, every one built in `open` and held to the end,
+# came to 3.70 GB of heap and killed the reader twice. Now one project is alive at a time,
+# and what crosses a project is a file-and-position key, never a `ts.Node` — so the case
+# that has to be pressed is a call in one project landing on a routine in another, which
+# until then worked only because both programs were handed the same parsed object.
+
+MONO_TREE: dict[str, str] = {
+    "packages/shared/tsconfig.json": """{
+  "compilerOptions": { "strict": true, "target": "ES2022", "module": "ESNext",
+                       "moduleResolution": "bundler" }
+}
+""",
+    "packages/shared/src/util.ts": """
+export function shout(s: string): string {
+  return s.toUpperCase();
+}
+
+export function whisper(s: string): string {
+  return s.toLowerCase();
+}
+""",
+    # A second file in one project, so a host asking out of order can cross back into it.
+    "packages/shared/src/more.ts": """
+export function more(): string {
+  return "m";
+}
+""",
+    "services/api/tsconfig.json": """{
+  "compilerOptions": { "strict": true, "target": "ES2022", "module": "ESNext",
+                       "moduleResolution": "bundler", "baseUrl": ".",
+                       "paths": { "@shared/*": ["../../packages/shared/src/*"] } }
+}
+""",
+    "services/api/src/handler.ts": """
+import { shout } from "@shared/util";
+
+export function handle(name: string): string {
+  return shout(name);
+}
+""",
+    "services/web/tsconfig.json": """{
+  "compilerOptions": { "strict": true, "target": "ES2022", "module": "ESNext",
+                       "moduleResolution": "bundler", "baseUrl": ".",
+                       "paths": { "@shared/*": ["../../packages/shared/src/*"] } }
+}
+""",
+    "services/web/src/page.ts": """
+import { whisper } from "@shared/util";
+
+export function render(name: string): string {
+  return whisper(name);
+}
+""",
+    # Under no tsconfig at all, and sorting *between* the projects above, so a host asking
+    # in plain path order would cross back into a project it had already left.
+    "scripts/tool.ts": """
+export function tool(): string {
+  return "t";
+}
+""",
+}
+
+MONO_PROJECTS = 4
+
+
+def _mono(root: Path) -> list[Path]:
+    paths = []
+    for name, source in MONO_TREE.items():
+        p = root / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(source, encoding="utf-8")
+        if name.endswith(".ts"):
+            paths.append(p)
+    return sorted(paths)
+
+
+def _session(root: Path, paths: list[Path], extract: list[Path] | None,
+             *, keep_order: bool = True):
+    """One session: open, extract `extract` (or nothing), edges. Returns all it said."""
+    from dunneflow.ingest.outofprocess import OutOfProcessPlugin
+    plugin = PLUGIN
+    assert isinstance(plugin, OutOfProcessPlugin)
+    said: list[str] = []
+    plugin.on_activity = said.append
+    plugin.open(root, paths)
+    order = list(plugin.order)
+    if not keep_order:
+        plugin.order = []
+    try:
+        facts = {ff.path: ff for ff in plugin.extract(extract or [], root)}
+        supplied = list(plugin.edges())
+        assert plugin._worker is not None
+        tail = plugin._worker.stderr_tail()
+    finally:
+        plugin.close()
+        plugin.on_activity = None
+    for ff in facts.values():
+        assert ff.errors == [], f"{ff.path}: {ff.errors}"
+    return facts, supplied, order, said, tail
+
+
+def _edge_rows(supplied) -> list[tuple]:
+    return [(e.site_id, e.caller_id, e.file, e.line, e.name, e.how, e.reason, e.frontier)
+            for e in supplied]
+
+
+@pytest.fixture(scope="module")
+def mono(tmp_path_factory):
+    root = tmp_path_factory.mktemp("tsmono")
+    paths = _mono(root)
+    PLUGIN.probe()
+    return root, paths, _session(root, paths, paths)
+
+
+def test_a_call_into_another_project_still_lands_on_its_routine(mono):
+    """The case node identity used to carry and a file-and-position key now has to."""
+    _root, _paths, (facts, supplied, *_rest) = mono
+    for caller, expr, path, target in (
+        ("handle", "shout", "services/api/src/handler.ts", "shout"),
+        ("render", "whisper", "services/web/src/page.ts", "whisper"),
+    ):
+        edge = _edge_for(facts, supplied, caller, expr, path)
+        assert edge is not None, f"{caller} -> {expr}: no edge"
+        assert (edge.file, edge.name) == ("packages/shared/src/util.ts", target), edge
+
+
+def test_the_reader_asks_to_be_read_project_by_project(mono):
+    """`opened.order` groups each project's files together, and the projects are sorted."""
+    root, paths, (_f, _s, order, _said, _tail) = mono
+    assert sorted(order) == sorted(str(p) for p in paths)
+    owner = [str(Path(o).relative_to(root)).split("/")[0:2] for o in order]
+    groups = [g for i, g in enumerate(owner) if i == 0 or g != owner[i - 1]]
+    assert len(groups) == len({tuple(g) for g in groups}), (
+        f"a project's files are split across the order: {owner}")
+
+
+def test_each_project_is_built_once_and_said_before_it_is(mono):
+    """Read in the order it asked for, the reader builds each project exactly once — and
+    says so before each build, on both channels, so a long one never reads as a hang."""
+    _root, _paths, (_f, _s, _o, said, tail) = mono
+    builds = [s for s in said if "building the program for" in s]
+    assert len(builds) == MONO_PROJECTS, said
+    assert all(s.startswith("building the program for ") for s in builds), builds
+    assert any("services/api/tsconfig.json (" in s and " of 4, 1 file)" in s
+               for s in builds), builds
+    assert tail.count("building the program for") == MONO_PROJECTS, tail
+
+
+def test_asked_out_of_order_the_answer_is_the_same(tmp_path):
+    """A host that ignores `order` costs rebuilds and changes nothing in the answer."""
+    paths = _mono(tmp_path)
+    facts, supplied, _o, said, _t = _session(tmp_path, paths, paths)
+    # packages/shared, then services/api, then packages/shared again: a crossing back.
+    names = {p.name: p for p in paths}
+    shuffled = [names["more.ts"], names["handler.ts"], names["util.ts"], names["tool.ts"],
+                names["page.ts"]]
+    facts2, supplied2, _o2, said2, _t2 = _session(tmp_path, paths, shuffled,
+                                                 keep_order=False)
+    assert _edge_rows(supplied2) == _edge_rows(supplied)
+    for path, ff in facts.items():
+        assert facts2[path].calls == ff.calls
+        assert facts2[path].routines == ff.routines
+    assert len([s for s in said2 if "building" in s]) > len([s for s in said if "building" in s])
+
+
+def test_a_warm_run_owes_every_edge_and_gives_the_same_ones(mono, tmp_path):
+    """Nothing extracted — every file cached — and `edges` still builds each project in
+    turn, and answers exactly what a cold run did, in the same order (rule 66)."""
+    root, paths, (_facts, supplied, *_rest) = mono
+    _f, warm, _o, said, _t = _session(root, paths, None)
+    assert _edge_rows(warm) == _edge_rows(supplied)
+    assert len([s for s in said if "building" in s]) == MONO_PROJECTS

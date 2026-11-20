@@ -23,10 +23,13 @@
  * There is no rung that matches a name, because that is the rung using a compiler is meant
  * to remove.
  *
- * **A declaration becomes a target by node identity, never by re-deriving a line.**
- * `Extractor.anchors` records which node each routine was declared at as the routine is
- * made, and the same walk fills it here — so a declaration is looked up by walking its
- * ancestors until one is a key. `line_start` is taken from a different node for each of the
+ * **A declaration becomes a target by the node it was declared at, never by re-deriving a
+ * line.** `Extractor.anchors` records which node each routine was declared at as the
+ * routine is made, and the same walk fills it here — so a declaration is looked up by
+ * walking its ancestors until one is a key. The key is the node's file, span and kind
+ * (`anchorKey`), not the object: since 2026-11-20 one project's program is alive at a time,
+ * and the routine a call lands on was recorded from another parse of the same text.
+ * `line_start` is taken from a different node for each of the
  * five shapes a routine is written in, and a second function that worked it out again would
  * disagree with the first on exactly the shapes nobody tests (rule 51).
  *
@@ -44,9 +47,10 @@
  */
 
 import ts from "typescript";
-import { walkFile, type CallNode } from "./extract.js";
+import { makeSourceFile, walkFile, type CallNode } from "./extract.js";
 import type { Routine, SuppliedEdge } from "./facts.js";
-import { relPath, type Session } from "./program.js";
+import { cacheKey, readSource, relPath, type Live, type Project, type Session }
+  from "./program.js";
 import type { RuleSet } from "./rules.js";
 
 export interface EdgeHarvest {
@@ -86,6 +90,30 @@ function callee(node: CallNode): ts.Node {
     : node.expression;
 }
 
+/**
+ * Routines by where they were declared, **as a key and never as a `ts.Node`**.
+ *
+ * Until 2026-11-20 this was a `Map<ts.Node, Routine>`, and a call in one project found a
+ * routine in another only because the two programs had been handed the same `SourceFile`
+ * object. Now one project is alive at a time (`program.ts`' `Session`), so the declaration
+ * a checker returns is a node of *its* program and the anchor was recorded from another
+ * parse — the same text, laid out by the same `makeSourceFile`, so the same positions, and
+ * a different object. The key is the file the compiler addressed, through `cacheKey`, and
+ * the node's span and kind: what both parses agree on.
+ */
+type Anchors = Map<string, Routine>;
+
+/** `anchorKey`'s file half, once per declaration rather than once per ancestor. */
+function fileKey(node: ts.Node): string | null {
+  const sf = node.getSourceFile() as ts.SourceFile | undefined;
+  return sf === undefined ? null : cacheKey(sf.fileName);
+}
+
+/** A node's identity across parses of one text: file, span, kind. */
+export function anchorKey(file: string, node: ts.Node): string {
+  return `${file}#${node.pos}-${node.end}-${node.kind}`;
+}
+
 /** Where a routine lives, as the extractor recorded it. */
 interface Target {
   file: string;
@@ -102,7 +130,7 @@ interface Target {
  */
 function anchorsOf(
   decls: readonly ts.Declaration[],
-  anchors: Map<ts.Node, Routine>,
+  anchors: Anchors,
 ): Routine[] {
   const out: Routine[] = [];
   for (const d of decls) {
@@ -181,11 +209,14 @@ function namesARoutine(node: ts.Node): boolean {
  * binding directly inside a named function needs the first and passes the second; an arrow
  * handed to `useCallback` needs the second and passes the first.
  */
-function climb(node: ts.Node, anchors: Map<ts.Node, Routine>): Routine | null {
+function climb(node: ts.Node, anchors: Anchors): Routine | null {
   if (!namesARoutine(node)) return null;
+  // A declaration the checker synthesised has no file, and so no place a routine could be.
+  const file = fileKey(node);
+  if (file === null) return null;
   let at: ts.Node | undefined = node;
   while (at !== undefined && !ts.isSourceFile(at)) {
-    const hit = anchors.get(at);
+    const hit = anchors.get(anchorKey(file, at));
     if (hit !== undefined) return hit;
     // **The climb stops at a function this reader did not record.** `const triggerRefresh
     // = useCallback(() => {…})` is an anonymous callback, which is deliberately not a
@@ -199,49 +230,93 @@ function climb(node: ts.Node, anchors: Map<ts.Node, Routine>): Routine | null {
 }
 
 /**
- * Walk every file of every project, resolve every call, and say where each one goes.
+ * Every call's far end, one project at a time, with nothing held between them but strings.
  *
- * Two passes over the file set and not one, because a call in `a.ts` reaches a routine in
- * `b.ts` and the anchors of `b.ts` do not exist until `b.ts` has been walked. The first
- * pass is the extraction walk with a checker attached; the second is a lookup.
+ * Two passes and not one, because a call in `a.ts` reaches a routine in `b.ts` and the
+ * routines of `b.ts` have to be known before the first call is resolved. **The first pass
+ * needs no checker** — what a routine is and where it is declared is syntax — so it is a
+ * plain parse of every project's files at `open`, kept as `anchors` and `where` and nothing
+ * else. The second is the extraction walk with the live project's checker attached,
+ * `harvest`ed just before that project is let go (`Session.beforeRelease`), so the checker
+ * that answers a project's calls is never alive at the same time as another's.
+ *
+ * `finish` is the `edges` request: it builds, in turn, whatever no extraction needed this
+ * run — a warm run extracts nothing and still owes every edge — and returns the harvests
+ * **in project order, whatever order they were taken in**, so the stream never depends on
+ * which file the host happened to ask for first (rule 66).
  */
-export function collectEdges(session: Session, rules: RuleSet): EdgeHarvest {
-  const anchors = new Map<ts.Node, Routine>();
-  const where = new Map<Routine, Target>();
-  const pending: {
-    checker: ts.TypeChecker;
-    calls: { site_id: string; caller_id: string; node: CallNode }[];
-  }[] = [];
-  const failed: string[] = [];
+export class Harvester {
+  private anchors: Anchors = new Map();
+  private where = new Map<Routine, Target>();
+  private taken = new Map<Project, EdgeHarvest>();
 
-  for (const project of session.projects) {
-    for (const abs of project.roots) {
-      const sf = project.program.getSourceFile(abs);
+  constructor(private session: Session, private rules: RuleSet) {}
+
+  /** The first pass: every routine of every project, from a parse with no checker. */
+  collectAnchors(): void {
+    this.anchors.clear();
+    this.where.clear();
+    this.taken.clear();
+    for (const project of this.session.projects) {
+      for (const abs of project.roots) {
+        let text: string;
+        try {
+          text = readSource(abs);
+        } catch {
+          continue;   // The harvest names it: the compiler cannot read it either.
+        }
+        // Named as the compiler will name it, because the file half of the key is read off
+        // the `SourceFile` on both sides.
+        const sf = makeSourceFile(abs, text);
+        const file = cacheKey(sf.fileName);
+        let ex;
+        try {
+          ex = walkFile(relPath(this.session.root, abs), text, this.rules, sf);
+        } catch {
+          continue;   // Likewise: the harvest's walk throws on it too, and says so.
+        }
+        for (const [node, routine] of ex.anchors) this.anchors.set(anchorKey(file, node), routine);
+        for (const routine of ex.routines) {
+          this.where.set(routine, {
+            file: routine.file,
+            line: routine.line_start,
+            name: routine.name,
+          });
+        }
+      }
+    }
+  }
+
+  /** The second pass, over the live project. Taken once; a rebuild does not take it again. */
+  harvest(live: Live): void {
+    if (this.taken.has(live.project)) return;
+    const { program, checker } = live;
+    const anchors = this.anchors;
+    const where = this.where;
+    const failed: string[] = [];
+    const pending: {
+      checker: ts.TypeChecker;
+      calls: { site_id: string; caller_id: string; node: CallNode }[];
+    }[] = [];
+    for (const abs of live.project.roots) {
+      const sf = program.getSourceFile(abs);
       if (sf === undefined) {
         // In the root list and not in the program: the compiler could not read it. It is
         // named rather than counted, because one unreadable root is a fact about that file
         // and a number is a fact about nothing (design rule 1).
-        failed.push(relPath(session.root, abs));
+        failed.push(relPath(this.session.root, abs));
         continue;
       }
-      const rel = relPath(session.root, abs);
+      const rel = relPath(this.session.root, abs);
       let ex;
       try {
-        ex = walkFile(rel, sf.text, rules, sf, project.checker);
+        ex = walkFile(rel, sf.text, this.rules, sf, checker);
       } catch {
         failed.push(rel);
         continue;
       }
-      for (const [node, routine] of ex.anchors) anchors.set(node, routine);
-      for (const routine of ex.routines) {
-        where.set(routine, {
-          file: routine.file,
-          line: routine.line_start,
-          name: routine.name,
-        });
-      }
       pending.push({
-        checker: project.checker,
+        checker,
         // **A call that touches a boundary is never also an internal edge** (rule 2), and
         // this reader already said which ones those are. The host suppresses them before
         // any resolver sees them, so an edge supplied for one would be work nobody reads
@@ -253,66 +328,83 @@ export function collectEdges(session: Session, rules: RuleSet): EdgeHarvest {
         })),
       });
     }
-  }
 
-  const edges: SuppliedEdge[] = [];
-  let outside = 0;
-  let unknown = 0;
-  for (const group of pending) {
-    for (const call of group.calls) {
-      const answer = resolveOne(group.checker, call.node, anchors);
-      /* **Where it stops, and why** (BACKLOG 36): sent with no target, in the words every
-       * reader uses, so *About this map* can say it rather than counting a silence. */
-      if (answer === "unknown") {
-        unknown += 1;
-        edges.push({
-          site_id: call.site_id, caller_id: call.caller_id, reason: "untyped",
-          how: "symbol; the checker could not say: a call through `any`, a computed name, "
-            + "or a name the compilation does not hold",
-        });
-        continue;
-      }
-      if (typeof answer === "object" && "outside" in answer) {
-        outside += 1;
-        edges.push({
-          site_id: call.site_id, caller_id: call.caller_id, reason: "outside",
-          frontier: answer.outside, how: "symbol; declared outside this map",
-        });
-        continue;
-      }
-      if (typeof answer === "number") {
-        // Several declarations competed. No edge, and the count is the honest reason —
-        // never an arbitrary pick, which would be the one defect a checker cannot excuse.
-        unknown += 1;
+    const edges: SuppliedEdge[] = [];
+    let outside = 0;
+    let unknown = 0;
+    for (const group of pending) {
+      for (const call of group.calls) {
+        const answer = resolveOne(group.checker, call.node, anchors);
+        /* **Where it stops, and why** (BACKLOG 36): sent with no target, in the words every
+         * reader uses, so *About this map* can say it rather than counting a silence. */
+        if (answer === "unknown") {
+          unknown += 1;
+          edges.push({
+            site_id: call.site_id, caller_id: call.caller_id, reason: "untyped",
+            how: "symbol; the checker could not say: a call through `any`, a computed name, "
+              + "or a name the compilation does not hold",
+          });
+          continue;
+        }
+        if (typeof answer === "object" && "outside" in answer) {
+          outside += 1;
+          edges.push({
+            site_id: call.site_id, caller_id: call.caller_id, reason: "outside",
+            frontier: answer.outside, how: "symbol; declared outside this map",
+          });
+          continue;
+        }
+        if (typeof answer === "number") {
+          // Several declarations competed. No edge, and the count is the honest reason —
+          // never an arbitrary pick, which would be the one defect a checker cannot excuse.
+          unknown += 1;
+          edges.push({
+            site_id: call.site_id,
+            caller_id: call.caller_id,
+            candidates: answer,
+            how: "symbol",
+          });
+          continue;
+        }
+        const target = where.get(answer.routine);
+        if (target === undefined) {
+          unknown += 1;
+          edges.push({
+            site_id: call.site_id, caller_id: call.caller_id, reason: "unfollowed",
+            how: "symbol; a routine this reader found and could not place",
+          });
+          continue;
+        }
         edges.push({
           site_id: call.site_id,
           caller_id: call.caller_id,
-          candidates: answer,
-          how: "symbol",
+          file: target.file,
+          line: target.line,
+          name: target.name,
+          how: answer.how,
         });
-        continue;
       }
-      const target = where.get(answer.routine);
-      if (target === undefined) {
-        unknown += 1;
-        edges.push({
-          site_id: call.site_id, caller_id: call.caller_id, reason: "unfollowed",
-          how: "symbol; a routine this reader found and could not place",
-        });
-        continue;
-      }
-      edges.push({
-        site_id: call.site_id,
-        caller_id: call.caller_id,
-        file: target.file,
-        line: target.line,
-        name: target.name,
-        how: answer.how,
-      });
     }
+    this.taken.set(live.project, { edges, outside, unknown, failed });
   }
 
-  return { edges, outside, unknown, failed };
+  /** The `edges` request: every project harvested, then all of it, in project order. */
+  finish(): EdgeHarvest {
+    for (const project of this.session.projects) {
+      if (!this.taken.has(project)) this.session.visit(project);
+    }
+    this.session.release();
+    const out: EdgeHarvest = { edges: [], outside: 0, unknown: 0, failed: [] };
+    for (const project of this.session.projects) {
+      const h = this.taken.get(project);
+      if (h === undefined) continue;
+      for (const e of h.edges) out.edges.push(e);
+      out.outside += h.outside;
+      out.unknown += h.unknown;
+      out.failed.push(...h.failed);
+    }
+    return out;
+  }
 }
 
 /**
@@ -327,7 +419,7 @@ export function collectEdges(session: Session, rules: RuleSet): EdgeHarvest {
 function resolveOne(
   checker: ts.TypeChecker,
   node: CallNode,
-  anchors: Map<ts.Node, Routine>,
+  anchors: Anchors,
 ): { routine: Routine; how: string } | number | { outside: string } | "unknown" {
   let answered = false;
   let far: ts.Declaration | undefined;

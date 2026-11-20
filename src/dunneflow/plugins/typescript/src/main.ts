@@ -31,7 +31,7 @@
 import { createInterface } from "node:readline";
 import { resolve as resolvePath } from "node:path";
 import { extractFile } from "./extract.js";
-import { collectEdges } from "./edges.js";
+import { Harvester } from "./edges.js";
 import { hashSource } from "./ids.js";
 import { Session, readSource, relPath } from "./program.js";
 import { parseRules, type RuleSet } from "./rules.js";
@@ -39,7 +39,7 @@ import { SCHEMA_VERSION, type FileFacts } from "./facts.js";
 
 const PROTOCOL = 1;
 const LANG = "typescript";
-const VERSION = "1.3.0";
+const VERSION = "1.4.0";
 
 interface Frame {
   t?: string;
@@ -49,6 +49,12 @@ interface Frame {
 
 const session = new Session();
 let rules: RuleSet = parseRules({});
+let harvester = new Harvester(session, rules);
+/**
+ * The request being answered, so a `progress` frame can carry its id. The host matches
+ * every frame by id (`ingest/worker.py`), and a progress frame is one of that request's.
+ */
+let current: number | undefined;
 
 function send(frame: Record<string, unknown>): void {
   process.stdout.write(JSON.stringify(frame) + "\n");
@@ -58,6 +64,18 @@ function send(frame: Record<string, unknown>): void {
 function note(text: string): void {
   process.stderr.write(text + "\n");
 }
+
+/**
+ * **A build is said before it starts, on both channels.** The largest of emir's projects
+ * takes half a minute to build, and a run that says nothing for that long reads exactly like
+ * one that has hung — which is what the reader saw when this reader was dying of it. The
+ * `progress` frame is for the panel; the stderr line is for the host's account of a death,
+ * whose tail then names the project the reader was building when it went.
+ */
+session.onBuild = (detail: string): void => {
+  note(detail);
+  send({ t: "progress", id: current, detail });
+};
 
 function onHello(): Record<string, unknown> {
   return {
@@ -94,11 +112,21 @@ function onOpen(frame: Frame): Record<string, unknown> {
   // over a subset answers wrongly rather than partially, which is why `open` is handed
   // every file of this language whether or not it changed.
   diagnostics.push(...session.open(session.root, files));
+  // The edge pass's first half, which needs no checker and so no program: every project's
+  // routines, by file and position (`edges.ts`). Harvested project by project from here on,
+  // each just before `Session` lets it go.
+  harvester = new Harvester(session, rules);
+  session.beforeRelease = (live) => harvester.harvest(live);
+  harvester.collectAnchors();
   return {
     t: "opened",
     files: files.length,
     program_ms: Date.now() - started,
     diagnostics,
+    // **The order this reader reads best in**: project by project, so each is built once.
+    // The host sorts what it asks for by it; asked out of it, the answer is the same and
+    // costs a rebuild.
+    order: session.order(),
   };
 }
 
@@ -161,7 +189,7 @@ function onExtract(frame: Frame): Record<string, unknown> {
  * would make that check pass over a reader that had lost a file (rule 37).
  */
 function onEdges(id: number | undefined): void {
-  const harvest = collectEdges(session, rules);
+  const harvest = harvester.finish();
   for (const edge of harvest.edges) send({ t: "edge", id, edge });
   if (harvest.failed.length) {
     note(`the edge pass could not walk ${harvest.failed.length} file(s): ` +
@@ -202,6 +230,7 @@ function main(): void {
       return;
     }
     const id = frame.id;
+    current = id;
     if (frame.t === "close") {
       session.close();
       send({ t: "closed", id });
