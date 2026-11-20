@@ -44,6 +44,7 @@ from ..schema import (
 from .codec import CodecError, decode, decode_facts
 from .contract import (
     SOURCE_TEXT,
+    ActivityFn,
     PluginManifest,
     PluginRefused,
     ProgressFn,
@@ -330,6 +331,25 @@ def _at_least(said: str, wanted: str) -> bool:
     return got >= need[: len(got)] if len(got) < len(need) else got >= need
 
 
+def _what_it_was_doing(last: str, tail: str) -> str:
+    """The clause a death message carries: what the reader last said, and whether it ran out.
+
+    **Said in the reader's words, and the memory line found rather than assumed.** emir's
+    TypeScript reader died twice of a full heap on 2026-11-20 and the host's account was an
+    exit status and sixty lines of native stack, with V8's one sentence that said why
+    somewhere inside them. The phrase is matched loosely and in no language's spelling —
+    node writes *heap out of memory*, the JVM *OutOfMemoryError* — and a line that matches
+    is quoted, never paraphrased into a diagnosis the reader did not make (rule 49).
+    """
+    out = f", while {last}" if last else ""
+    for line in tail.splitlines():
+        flat = line.lower().replace(" ", "")
+        if "outofmemory" in flat:
+            out += f". It ran out of memory: {line.strip()!r}"
+            break
+    return out
+
+
 class OutOfProcessPlugin:
     """One language, read by another program over a pipe."""
 
@@ -370,6 +390,10 @@ class OutOfProcessPlugin:
         self.edge_notes: list[str] = []
         # What the reader said when it opened the session. See `open`.
         self.opened_notes: list[str] = []
+        # The order the reader asked to be read in (`opened.order`), and where its
+        # `progress` frames go (`IngestPlugin.on_activity`). See `open` and `extract`.
+        self.order: list[str] = []
+        self.on_activity: ActivityFn | None = None
         self._worker: NdjsonWorker | None = None
 
     # ------------------------------------------------------------ lifecycle --- #
@@ -388,9 +412,19 @@ class OutOfProcessPlugin:
 
     def open(self, root: Path, all_files: Sequence[Path]) -> None:
         worker = NdjsonWorker(plugin_argv(self.manifest), self.manifest)
+        worker.on_progress = self._activity
         worker.start()
         self._worker = worker
         reply = worker.open(root, [str(p) for p in all_files])
+        # **The order the reader reads best in, taken as a request and never as a filter.**
+        # A reader holding one compilation at a time — TypeScript, one per `tsconfig.json`
+        # — is asked project by project or it builds each one again for every file that
+        # crosses back into it. Only strings it was given are kept, so `extract` can sort
+        # by it without ever asking for a file the walk did not choose.
+        order = reply.get("order")
+        given = {str(p) for p in all_files}
+        self.order = ([o for o in order if isinstance(o, str) and o in given]
+                      if isinstance(order, list) else [])
         # **What the reader said about the session it just built, kept rather than
         # discarded.** `opened` has carried `program_ms` and `diagnostics` since chunk 7 and
         # this process threw both away — a field a plugin fills and nobody reads is an empty
@@ -402,6 +436,11 @@ class OutOfProcessPlugin:
         ms = reply.get("program_ms")
         if isinstance(ms, int) and ms > 0:
             self.opened_notes.append(f"opened in {ms / 1000:.1f}s")
+
+    def _activity(self, detail: str) -> None:
+        """A `progress` frame, passed on as the reader said it. Never a control signal."""
+        if self.on_activity is not None:
+            self.on_activity(detail)
 
     def edges(self) -> Iterator[SuppliedEdge]:
         """Where this language's calls go, asked once and read as a stream.
@@ -586,6 +625,12 @@ class OutOfProcessPlugin:
                 f"what `open` is."
             )
 
+        if self.order:
+            # Stable, and a file the reader did not place keeps its turn after the ones it
+            # did: the walk's choice of *which* files is never the reader's to change.
+            rank = {p: i for i, p in enumerate(self.order)}
+            work = sorted(work, key=lambda p: rank.get(str(p), len(rank)))
+
         for i, path in enumerate(work, 1):
             rel = str(path)
             facts = self._one(path, root)
@@ -658,17 +703,19 @@ class OutOfProcessPlugin:
         assert worker is not None                       # noqa: S101 — checked by caller
         lang = self.manifest.lang
         tail = worker.stderr_tail()
+        doing = _what_it_was_doing(worker.last_progress, tail)
         if worker.deaths >= 1:
             raise PluginRefused(
-                f"the {lang} plugin has now died twice — the second time on {path} ({exc}). "
-                f"It was restarted after the first and did not survive, so this is the "
-                f"reader rather than one file, and every fact it has produced this run is "
-                f"worth doubting.\n{tail or '(nothing on stderr)'}"
+                f"the {lang} plugin has now died twice — the second time on {path} "
+                f"({exc}){doing}. It was restarted after the first and did not survive, so "
+                f"this is the reader rather than one file, and every fact it has produced "
+                f"this run is worth doubting.\n{tail or '(nothing on stderr)'}"
             )
         # **The file it died on is not retried.** A fresh worker meets the same file and
         # dies again, and the second death would refuse the language over one bad file.
-        note = (f"the {lang} reader died reading it ({exc}); the reader was restarted and "
-                f"this file was not read again. It said:\n{tail or '(nothing on stderr)'}")
+        note = (f"the {lang} reader died reading it ({exc}){doing}; the reader was "
+                f"restarted and this file was not read again. It said:\n"
+                f"{tail or '(nothing on stderr)'}")
         worker.respawn()
         return self._synthesised(path, root, note)
 

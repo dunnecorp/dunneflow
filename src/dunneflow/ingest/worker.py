@@ -46,7 +46,7 @@ import os
 import subprocess
 import threading
 from collections import deque
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -121,6 +121,14 @@ class NdjsonWorker:
         # dead one was in. A reader that resolves symbols over a subset of the compilation
         # answers wrongly rather than partially, so this is not optional bookkeeping.
         self._opened: tuple[Path, list[str]] | None = None
+        # **What the reader last said it was doing**, from its `progress` frames. A reader
+        # may say what a long request is doing while it does it — the TypeScript reader
+        # builds a project's compilation inside whichever `extract` first needs it, which on
+        # emir took half a minute — and a frame that says so is relayed to whoever set
+        # `on_progress` and is never taken as the reply. Kept across a respawn on purpose:
+        # it is what a death message says the reader was doing when it went.
+        self.on_progress: Callable[[str], None] | None = None
+        self.last_progress = ""
 
     # ------------------------------------------------------------------ life --- #
 
@@ -214,6 +222,31 @@ class NdjsonWorker:
             )
         return frame
 
+    def _reply(self, ident: int, asked: str) -> dict[str, Any]:
+        """The next frame for request `ident` that is not a `progress` frame.
+
+        **The id is checked on progress frames too**, for the reason `stream` checks it on
+        every frame: one that does not match is an answer to something else, and relaying it
+        as this request's progress would be the same misdirection as taking it as the reply.
+        """
+        while True:
+            reply = self._read()
+            got = reply.get("id")
+            if got != ident:
+                raise ProtocolError(
+                    f"the {self.manifest.lang} plugin answered request {ident} with a "
+                    f"frame carrying id {got!r}, while answering {asked!r}. Replies are "
+                    f"matched by id, so one that does not match is not a late answer, it is "
+                    f"an answer to something else arriving as this one."
+                )
+            if reply["t"] != "progress":
+                return reply
+            detail = reply.get("detail")
+            if isinstance(detail, str) and detail:
+                self.last_progress = detail
+                if self.on_progress is not None:
+                    self.on_progress(detail)
+
     def request(self, frame: dict[str, Any]) -> dict[str, Any]:
         """Send one frame and return its reply, matched by id.
 
@@ -224,15 +257,7 @@ class NdjsonWorker:
         with self._lock:
             ident = self._id()
             self._write({**frame, "id": ident})
-            reply = self._read()
-            got = reply.get("id")
-            if got != ident:
-                raise ProtocolError(
-                    f"the {self.manifest.lang} plugin answered request {ident} with a "
-                    f"frame carrying id {got!r}. Replies are matched by id, so one that "
-                    f"does not match is not a late answer, it is an answer to something "
-                    f"else arriving as this one."
-                )
+            reply = self._reply(ident, frame["t"])
             if reply["t"] == "error":
                 raise ProtocolError(
                     f"the {self.manifest.lang} plugin refused {frame['t']!r}: "
@@ -260,15 +285,7 @@ class NdjsonWorker:
             ident = self._id()
             self._write({**frame, "id": ident})
             while True:
-                reply = self._read()
-                got = reply.get("id")
-                if got != ident:
-                    raise ProtocolError(
-                        f"the {self.manifest.lang} plugin answered request {ident} with a "
-                        f"frame carrying id {got!r}, part way through a {frame['t']!r} "
-                        f"stream. A frame that does not match is not a late answer, it is "
-                        f"an answer to something else arriving as this one."
-                    )
+                reply = self._reply(ident, frame["t"])
                 if reply["t"] == "error":
                     raise ProtocolError(
                         f"the {self.manifest.lang} plugin refused {frame['t']!r}: "

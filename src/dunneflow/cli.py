@@ -981,10 +981,19 @@ def _analyze(args: argparse.Namespace, run: list[runstate.RunState]) -> int:
         if i % 50 == 0 or i == total:
             _emit(f"  extracting {i}/{total}  {prog.ms() / 1000:,.0f}s")
 
+    def activity(what: str, i: int, total: int) -> None:
+        # **The count it had reached, with what the reader says it is doing now.** A
+        # TypeScript project is built inside the first `extract` that needs it, and on emir
+        # the largest took half a minute with the count standing still (2026-11-20).
+        prog.detail(i, total, what=what)
+        if not args.quiet:
+            _emit(f"  {what}  {prog.ms() / 1000:,.0f}s")
+
     prog.step(STEP_EXTRACT)
     stats = analyze_tree(
         source_root, store, include_tests=args.include_tests,
         jobs=args.jobs, progress=progress, declined=declined, part_of=part_of,
+        activity=activity,
     )
     t_extract = time.perf_counter() - t0
 

@@ -551,3 +551,90 @@ def test_a_respawned_worker_is_opened_with_its_rules(manifest, tree):
     assert len(opens) == 2, "the first open, and the respawned worker's"
     assert opens[0] == opens[1], "the same frame, rules included, from one place"
     assert opens[1]["rules"], "a respawned worker that lost its rules finds no boundaries"
+
+
+# ------------------------------------------- `progress` and `order` (2026-11-20) --- #
+#
+# Two additions a reader that holds one compilation at a time needed: a way to say what a
+# long request is doing while it does it, and a way to ask to be read in an order that
+# builds each compilation once. Both optional; a reader that sends neither is unchanged.
+
+
+def test_a_progress_frame_is_relayed_and_never_taken_as_the_reply(edging, tree, monkeypatch):
+    """Before every `extract` and inside the `edges` stream, and the answers are intact."""
+    monkeypatch.setenv("DUNNEFLOW_OOP_PROGRESS", "1")
+    files = sorted(tree.glob("*.py"))
+    said: list[str] = []
+    plugin = OutOfProcessPlugin(edging)
+    plugin.on_activity = said.append
+    plugin.open(tree, files)
+    try:
+        got = {f.path: f for f in plugin.extract(files, tree)}
+        edges = list(plugin.edges())
+    finally:
+        plugin.close()
+    assert got["sample.py"].routines and got["other.py"].routines
+    assert len(edges) == 2
+    assert said == ["building the program for other.py", "building the program for sample.py",
+                    "building the program for the edges"]
+
+
+def test_a_progress_frame_for_another_request_is_refused(manifest, tree, monkeypatch):
+    """Matched by id like every other frame: relayed as this request's, it would be the
+    misdirection the id exists to catch."""
+    monkeypatch.setenv("DUNNEFLOW_OOP_PROGRESS", "1")
+    monkeypatch.setenv("DUNNEFLOW_OOP_PROGRESS_WRONGID", "1")
+    files = sorted(tree.glob("*.py"))
+    plugin = OutOfProcessPlugin(manifest)
+    plugin.open(tree, files)
+    try:
+        with pytest.raises(ProtocolError, match="carrying id"):
+            list(plugin.extract(files, tree))
+    finally:
+        plugin.close()
+
+
+def test_the_order_a_reader_asks_for_is_the_order_it_is_asked_in(manifest, tree, monkeypatch):
+    """`opened.order` reverses the files here, and the host asks for them reversed."""
+    monkeypatch.setenv("DUNNEFLOW_OOP_ORDER", "1")
+    files = sorted(tree.glob("*.py"))               # other.py, sample.py
+    plugin = OutOfProcessPlugin(manifest)
+    plugin.open(tree, files)
+    try:
+        asked = [f.path for f in plugin.extract(files, tree)]
+    finally:
+        plugin.close()
+    assert asked == ["sample.py", "other.py"]
+
+
+def test_an_order_naming_files_nobody_asked_for_reads_nothing_extra(manifest, tree,
+                                                                    monkeypatch):
+    """The walk chooses *which* files; the reader only orders them. Opened with both and
+    asked for one, the host reads one."""
+    monkeypatch.setenv("DUNNEFLOW_OOP_ORDER", "1")
+    files = sorted(tree.glob("*.py"))
+    plugin = OutOfProcessPlugin(manifest)
+    plugin.open(tree, files)
+    try:
+        asked = [f.path for f in plugin.extract([tree / "other.py"], tree)]
+    finally:
+        plugin.close()
+    assert asked == ["other.py"]
+
+
+def test_a_death_says_what_the_reader_was_doing_and_that_it_ran_out_of_memory(
+        manifest, tree, monkeypatch):
+    """emir's reader died of a full heap twice and the host said an exit status. Now it
+    says what the reader last reported doing, and quotes the line that says why."""
+    monkeypatch.setenv("DUNNEFLOW_OOP_PROGRESS", "1")
+    monkeypatch.setenv("DUNNEFLOW_OOP_DIE_ON", "sample")
+    files = sorted(tree.glob("*.py"))
+    plugin = OutOfProcessPlugin(manifest)
+    plugin.open(tree, files)
+    try:
+        got = {f.path: f for f in plugin.extract(files, tree)}
+    finally:
+        plugin.close()
+    said = got["sample.py"].errors[0]
+    assert ", while building the program for sample.py" in said
+    assert "It ran out of memory: 'FATAL ERROR: Reached heap limit" in said

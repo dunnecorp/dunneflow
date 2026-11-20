@@ -60,6 +60,11 @@ VERSION = "1.0.0"
 #   DUNNEFLOW_OOP_STRAY    anything truthy; a frame that is neither `edge` nor `edges_done`
 #                          arrives inside the stream
 #   DUNNEFLOW_OOP_SAID     anything truthy; `edges_done` carries `notes` about the pass
+#   DUNNEFLOW_OOP_PROGRESS anything truthy; every `extract` and the `edges` stream are
+#                          preceded by a `progress` frame, and a death on DIE_ON is preceded
+#                          by one and by a node-shaped "heap out of memory" line on stderr
+#   DUNNEFLOW_OOP_PROGRESS_WRONGID  anything truthy; that progress frame carries another id
+#   DUNNEFLOW_OOP_ORDER    anything truthy; `opened` carries `order`, the files reversed
 
 
 def _hit(var: str, path: str) -> bool:
@@ -76,6 +81,16 @@ def note(text: str) -> None:
     """The other channel. Evidence, and never a control signal."""
     sys.stderr.write(text + "\n")
     sys.stderr.flush()
+
+
+def progress(frame: dict[str, Any], detail: str) -> None:
+    """A `progress` frame for the request in hand, where the environment asks for one."""
+    if not os.environ.get("DUNNEFLOW_OOP_PROGRESS"):
+        return
+    ident = frame.get("id")
+    if os.environ.get("DUNNEFLOW_OOP_PROGRESS_WRONGID"):
+        ident = (ident or 0) + 1000
+    send({"t": "progress", "id": ident, "detail": detail})
 
 
 def on_hello(frame: dict[str, Any]) -> dict[str, Any]:
@@ -114,16 +129,24 @@ def on_open(frame: dict[str, Any]) -> dict[str, Any]:
     """
     SESSION["root"] = Path(str(frame.get("root", ".")))
     note(f"opened {len(frame.get('files', []))} files")
-    return {"t": "opened", "files": len(frame.get("files", [])), "program_ms": 0,
-            "diagnostics": []}
+    opened: dict[str, Any] = {"t": "opened", "files": len(frame.get("files", [])),
+                              "program_ms": 0, "diagnostics": []}
+    if os.environ.get("DUNNEFLOW_OOP_ORDER"):
+        opened["order"] = list(reversed([str(f) for f in frame.get("files", [])]))
+    return opened
 
 
 def on_extract(frame: dict[str, Any]) -> dict[str, Any]:
     path = str(frame.get("path", ""))
     root = SESSION.get("root")
 
+    progress(frame, f"building the program for {Path(path).name}")
     if _hit("DUNNEFLOW_OOP_DIE_ON", path):
         note("dying on purpose")
+        if os.environ.get("DUNNEFLOW_OOP_PROGRESS"):
+            note("FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of "
+                 "memory")
+            note(" 1: 0x1000 node::OOMErrorHandler")
         os._exit(9)
     if _hit("DUNNEFLOW_OOP_GARBAGE", path):
         # The one failure mode a plugin author actually produces: a stray print.
@@ -163,6 +186,7 @@ EDGES = [
 
 def on_edges(ident: Any) -> None:
     """A stream, not a reply: every frame carries the request's id, terminator included."""
+    progress({"id": ident}, "building the program for the edges")
     for edge in EDGES:
         body = dict(edge)
         if os.environ.get("DUNNEFLOW_OOP_BADEDGE"):

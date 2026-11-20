@@ -32,7 +32,7 @@ from ..schema import (
     SuppliedUse,
     SuppliedWayIn,
 )
-from .contract import PluginManifest, ProgressFn, stamp_lang
+from .contract import ActivityFn, PluginManifest, ProgressFn, stamp_lang
 
 
 def _extract_one(args: tuple[str, str]) -> FileFacts:
@@ -82,6 +82,8 @@ class InProcessPlugin:
         self.edge_ways_in: list[SuppliedWayIn] = []
         # Nothing to say: this reader opens nothing, which `open` below states in words.
         self.opened_notes: list[str] = []
+        # Set by the walk and never called: this reader does nothing long enough to narrate.
+        self.on_activity: ActivityFn | None = None
 
     def probe(self) -> None:
         """Nothing to find. This reader is the process doing the asking."""

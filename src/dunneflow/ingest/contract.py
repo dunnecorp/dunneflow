@@ -37,6 +37,9 @@ from ..schema import (
 )
 
 ProgressFn = Callable[[str, int, int], None]
+# What a reader says it is doing, while it does it: *building the program for infra (3 of
+# 16)*. A sentence, not a count, and never a control signal. See `IngestPlugin.on_activity`.
+ActivityFn = Callable[[str], None]
 
 # **What a reader must read, and it was an accident of a default until it cost two files.**
 #
@@ -409,6 +412,13 @@ class IngestPlugin(Protocol):
     # reader that opens nothing, and the `opened` frame carried both fields for three
     # chunks with the host discarding them (rule 35).
     opened_notes: list[str]
+    # **Where the walk hears what the reader is doing during a long request**, set by the
+    # walk before `open` and left `None` by everyone else. An out-of-process reader's
+    # `progress` frames arrive here; an in-process reader has nothing to say and never calls
+    # it. It exists because a TypeScript project's compilation is built inside whichever
+    # `extract` first needs it, and the largest of emir's took half a minute in which the
+    # dashboard showed a count that did not move (2026-11-20).
+    on_activity: ActivityFn | None
 
     def probe(self) -> None:
         """Raise `ToolchainMissing` if this machine cannot run this reader.

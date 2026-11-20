@@ -990,6 +990,7 @@ def analyze_tree(
     progress: Callable[[str, int, int], None] | None = None,
     declined: frozenset[str] = frozenset(),
     part_of: Path | None = None,
+    activity: Callable[[str, int, int], None] | None = None,
 ) -> WalkStats:
     """Extract every changed file under `root` into `store`.
 
@@ -1097,12 +1098,16 @@ def analyze_tree(
     # is the one thing the host knows and the readers do not.
     done = 0
     total = len(todo)
+    # The count the run has reached, for `activity`: a reader's sentence arrives between
+    # files and carries no count of its own.
+    reached = [0]
 
     for lang, wanted in work.items():
         plugin = ingest.PLUGINS[lang]
         offset = done
 
         def relay(path: str, i: int, _n: int, _offset: int = offset) -> None:
+            reached[0] = _offset + i
             if progress:
                 progress(path, _offset + i, total)
 
@@ -1110,6 +1115,11 @@ def analyze_tree(
             stats.no_literals.append(lang)
         if plugin.manifest.supplies_edges:
             store.set_meta_now(_READING + lang, "whole" if lang in whole else "rest")
+        # What the reader says it is doing inside a long request, prefixed with whose words
+        # they are, because two readers can be in one run and the sentence names neither.
+        plugin.on_activity = (
+            None if activity is None
+            else (lambda what, _lang=lang: activity(f"{_lang}: {what}", reached[0], total)))
         plugin.open(root, owned.get(lang, []))
         stats.reader_notes.extend(f"{lang} {n}" for n in plugin.opened_notes)
         try:
