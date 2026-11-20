@@ -945,6 +945,31 @@ point exposes no `createProgram`, no `SyntaxKind` and no `createSourceFile` — 
 `typeof ts.createProgram` is `undefined` at 7.0.2 and `function` at 5.9.3. The plugin pins
 5.9.3.
 
+### TypeScript on a monorepo: emir, one project at a time (measured 2026-11-20)
+
+`../emir` is a TypeScript monorepo of sixteen `tsconfig.json` projects, with 743 program
+files read. Apple M1, **8 GB of RAM**, macOS 26.6.2, node 22.23.3, emir and its
+`node_modules` on the external volume. `--any-size --flow-inventory full`, docs read. **One
+run each, not a median**: each takes minutes, and the machine had two idle `dunneflow serve`
+processes on it. Peak resident memory is the reader's, sampled every 2 s. The heap figures
+come from temporary logging (since removed), taken right after a forced collection.
+
+| | all 16 programs held (reader 1.3.0) | one at a time (reader 1.4.0) |
+|---|---:|---:|
+| at node's default heap (~2 GB) | **died twice**, out of memory; no map | **358 s** wall · exit 0 |
+| at an 8 GB heap | 308 s wall, swapping | — |
+| heap, all programs built | 1.85 GB | — |
+| heap, after extraction | **3.70 GB** | — |
+| reader's peak resident | 1.99 GB, the rest compressed or swapped | **1.33 GB** |
+| CPU, user | 163 s | 83 s |
+| the map | — | identical in every table, 46,527 supplied edges |
+
+**The 50 s is re-parsing**: each project now reads and parses the `node_modules`
+declarations it shares with others, which the held programs parsed once. The CPU halved
+anyway, because a heap a third the size takes far less collecting. Keeping the parsed
+declarations across projects would buy back some of the 50 s at the cost of most of the
+memory. It was not built, because the bound is the point on this machine.
+
 ### Go, read over the pipe and checked by `go/types` (measured 2026-11-01)
 
 Apple M1, Go 1.25.6, warm disk, `--no-docs --no-render`, the output directory removed before

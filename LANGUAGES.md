@@ -73,7 +73,10 @@ an out-of-process reader costs, so pipelining would buy nothing.
    TypeScript file with a network call in it would have been reported as unreadable.
 2. **Speak the protocol**: `hello` · `open` · `extract` · `edges` · `close`, NDJSON over
    stdin and stdout, correlated on an id. **stdout carries protocol and nothing else**; every
-   sentence goes to stderr, which the host drains and never parses.
+   sentence goes to stderr, which the host drains and never parses. A reader that does
+   something long inside a request may say what with a `progress` frame, and one that
+   holds a compilation at a time may ask for an order in `opened.order` (see *One
+   compilation at a time*, below).
 3. **Keep the dotted contract.** `ingest/dotted.py` writes down the normalisation every rule
    in every `detectors/*.yaml` has always been matched against, and
    **`dunneflow ingest-conform <lang>`** checks your reader keeps it. Run it. TypeScript's
@@ -619,3 +622,54 @@ those calls on the whole module, and the count reaches the map in `edges_done.no
 **Ask the next reader which of its boundaries are methods.** A reader with a checker can do
 this; one without (Rust's path resolver) can do it only where the source writes the type
 down. Either way the type must come from something its cache key covers.
+
+## One compilation at a time, and two frames a reader may send
+
+*Written 2026-11-20, after emir.* emir is a TypeScript monorepo with sixteen `tsconfig.json`
+projects. Analysing it killed the TypeScript reader twice: V8 ran out of memory and the job
+failed. All that time the dashboard showed *reading the source tree, 0 of 7*, so it looked
+hung. Measured with the heap raised to 8 GB, the reader built all sixteen programs in `open`
+and held every one to the end. Building them alone left **1.85 GB of heap after collection**,
+of which `infra` added 517 MB on its own. Extracting 743 files then raised that to
+**3.70 GB**. node's default is 2 GB. On an 8 GB machine a larger limit only swaps, so the
+bound has to be on the work, as the Java reader's is (rule 55).
+
+**One project is alive at a time.** `open` groups the files and builds nothing.
+`Session.visit` builds the project a request needs, after letting the previous one go:
+program, checker and every file it parsed. Only TypeScript's own `lib*.d.ts` are kept between
+projects. On emir the reader's peak was **1.33 GB resident** at node's default heap. The map
+it wrote is identical to the 8 GB run's in every table, all 46,527 supplied edges included.
+The cost is re-parsing the declarations projects share, about 16 % more wall time on emir.
+`PERFORMANCE.md` has the figures.
+
+**What crosses a project is a key, never a compiler object.** The edge pass found a call's
+routine by `ts.Node` identity. A call in `services/api` landed on `packages/shared`'s routine
+only because both programs had been handed one parsed `SourceFile`. Release the first program
+and that object is gone. The key is now the file the compiler addressed, through `cacheKey`,
+plus the node's span and kind (`edges.ts`' `anchorKey`). That works because every parse of
+one text by `makeSourceFile` lays it out identically. This is the Java reader's rule above in
+a second language: what crosses a batch is a name. **Which routines exist is syntax**, so
+`open` collects every project's routines from a plain parse, with no checker, and keeps only
+those keys. The calls are resolved project by project, each just before that project is
+released (`Harvester.harvest`). `edges` builds whatever no extraction needed, so a warm run
+still owes every edge, and streams the harvests in project order whatever order they were
+taken in (rule 66).
+
+**Two optional frames, which other readers neither send nor need:**
+- **`opened.order`**: the files, as the host spelled them, in the order the reader reads
+  best. The host sorts what it asks for by it (`OutOfProcessPlugin.extract`). It never adds
+  a file and never drops one: the walk chooses *which* files, the reader only orders them.
+  Asked out of order, the answer is the same and costs a rebuild.
+- **`progress`**, `{"t": "progress", "id": <the request's>, "detail": "…"}`: what a long
+  request is doing while it does it. It is matched by id like every frame and never taken as
+  the reply (`NdjsonWorker._reply`). It reaches the dashboard through
+  `IngestPlugin.on_activity` as *typescript: building the program for infra/tsconfig.json
+  (3 of 16, 10 files)*. The reader writes the same sentence to stderr, and the host
+  remembers the last one, so a death now says *while building the program for …*. A stderr
+  line saying the reader ran out of memory is quoted rather than paraphrased.
+
+**The `checkerFor` that came with it.** Extraction asked for a file's checker by walking
+every built program and taking the first that contained the file. For a package imported
+across a monorepo, that was whichever importer sorted first, so another project's compiler
+options decided this file's boundaries. It is now the file's own project. On emir and
+DunneNote this changed nothing. That is a measurement on two trees, not a proof.
