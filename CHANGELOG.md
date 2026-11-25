@@ -4,6 +4,54 @@ What changed between releases, for somebody deciding whether to upgrade and what
 cost them. The session-by-session record of how each thing was found is kept outside this
 repository; what is still owed is [`BACKLOG.md`](BACKLOG.md).
 
+## 0.3.1
+
+Two crashes fixed, and nothing else changed.
+
+### Before you upgrade
+
+- **Every map made by 0.3.0 has to be analysed again.** The TypeScript fix below changes
+  how the host drives a reader, and that code is part of every map's stamp. So 0.3.1
+  refuses a 0.3.0 map, in any language, and says so. `analyze` rebuilds it from the tree.
+  A map that is not re-read stays refused, and nothing else is lost. Time it by the
+  original analysis: seconds for a small program, about sixteen minutes for OpenUSD, about
+  three hours for Unreal's `Engine/Source/Runtime`.
+- **0.3.1's dashboard and MCP server rewrite two bytes of a map journalled by WAL before
+  reading it.** That journal is what the crash below comes from. 0.3.1 writes no such map,
+  but an older writer did, and so does a 0.3.1 writer if something held the file open as it
+  finished. No row changes and no stamp moves. A map that fails its checks is refused
+  untouched. A map that something else holds open at that moment (an analysis still writing
+  it, another server) is left as it is, and is read as before. The command-line readers
+  (`touches`, `query`, `check` and the rest) never rewrite a map.
+
+### Fixed
+
+- **The dashboard died when the Mac slept with a map open on an external drive.** Sleep
+  dismounts the drive, and the server was killed by a bus error (SIGBUS) on its next
+  request, with nothing on screen to say why. A map is no longer read through shared
+  memory, so a disconnected drive is now an error the server can answer. While the drive
+  is away the page says which file it cannot read. When the drive is back, the server
+  reopens the map by itself and the page carries on where it was, with no restart. The
+  MCP server does the same. `tests/test_volume_loss.py` detaches a real disk image under a
+  reader to prove it.
+- **Analysing a large TypeScript monorepo ran out of memory.** The reader held every
+  `tsconfig.json` project's compilation at once: 3.7 GB of heap on a 16-project tree,
+  against node's 2 GB default, so the reader died twice and the job failed. It now holds
+  one project at a time (TypeScript reader 1.4.0): that tree reads with a peak of 1.33 GB,
+  and its map is identical to one read with an 8 GB heap. While the reader works, the
+  progress line says which project it is on. If a reader does die, the message says what
+  it was doing and quotes any out-of-memory line it printed.
+- **The document and source stores opened "read-only" with a read-write connection.**
+  They now open read-only, as the graph always has (formerly BACKLOG 62).
+
+### Known limits
+
+- An analysis writing its map to a drive that sleep dismounts still dies. It runs in its
+  own process, so the dashboard that started it survives and reports the failure.
+  Analyse again once the drive is back.
+- The Analyse progress bar counts steps, so it stays empty through the first one, as in
+  0.3.0.
+
 ## 0.3.0
 
 ### Before you upgrade

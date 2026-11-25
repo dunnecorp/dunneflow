@@ -1,6 +1,6 @@
 [project]
 name = "dunneflow"
-version = "0.3.0"
+version = "0.3.1"
 description = "DunneFlow — maps what moves through a program: entrypoints, flows, routines, and boundaries."
 requires-python = ">=3.12"
 license = "MIT"
