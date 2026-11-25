@@ -16,7 +16,7 @@ import tempfile
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -939,7 +939,14 @@ def fingerprint_files(paths: Iterable[Path]) -> str:
     rather than handled. `RulesMissing` exists so a test can name the case (rule 30 -- a
     class the guard can ask about, not a sentence it has to match).
     """
-    wanted = sorted(set(paths))
+    # **Sorted as POSIX sorts it, on every platform.** `sorted()` over `Path`s is the
+    # platform's own order, and Windows compares paths case-insensitively: C and C++'s
+    # `vendor/clang-c/BuildSystem.h` and Rust's `LICENSE-APACHE` went to different places
+    # among their lower-case neighbours, the same bytes were hashed in a different order,
+    # and a map made on Windows was stale to the same release on a Mac (found 2026-11-25,
+    # comparing the 0.3.1 builds; rule 93's case, one property over). POSIX's order is the
+    # one every existing Mac and Linux stamp was taken in, so those are unchanged.
+    wanted = sorted(set(paths), key=lambda p: PurePosixPath(p.as_posix()).parts)
     if not wanted:
         raise RulesMissing(
             "no extraction rules were found at all, so there is nothing to fingerprint. "

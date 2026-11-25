@@ -1874,6 +1874,17 @@ rule of that number — a blank canvas must say why it is blank — which does e
     in code. Only the writers had never been asked, because for as long as there was one
     platform the question had one answer.
 
+    **The case of a path belongs to the machine too, and so does its order** (2026-11-25).
+    `fingerprint_files` hashed its files in `sorted()` order, and Windows sorts paths
+    case-insensitively. The 0.3.1 builds agreed with their own checkouts on every stamp,
+    and GIZA's C and C++ and Rust stamps still differed from the Mac's, over 241 files that
+    were byte-identical on both. `BuildSystem.h` and `LICENSE-APACHE` sat in a different
+    place among their lower-case neighbours, so a map made on Windows was stale on a Mac
+    for no change at all. Nothing caught it because `tools/fingerprints.py` compares a
+    build with *its own* checkout, which agrees with itself on any platform. The order is
+    now POSIX's everywhere, which leaves every Mac and Linux stamp as it was, and
+    `tests/test_fingerprint_order.py` would have failed on Windows.
+
 94. **A boolean that says "the other one" stops being true when there are three.** A
     two-valued test of a set that later grows does not raise, does not warn, and does not
     read as wrong: it keeps answering, and one of its two answers has quietly become a

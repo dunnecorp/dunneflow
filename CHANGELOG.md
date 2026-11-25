@@ -6,7 +6,7 @@ repository; what is still owed is [`BACKLOG.md`](BACKLOG.md).
 
 ## 0.3.1
 
-Two crashes fixed, and nothing else changed.
+Two crashes fixed, and maps that would not travel between Windows and the rest. Nothing else changed.
 
 ### Before you upgrade
 
@@ -41,6 +41,10 @@ Two crashes fixed, and nothing else changed.
   and its map is identical to one read with an 8 GB heap. While the reader works, the
   progress line says which project it is on. If a reader does die, the message says what
   it was doing and quotes any out-of-memory line it printed.
+- **A C, C++ or Rust map made on Windows was refused on a Mac or Linux, and the other way
+  round.** The readers' stamps were hashed in an order that Windows works out without
+  regard to case, so the same reader gave two stamps. Maps are now stamped alike on every
+  platform.
 - **The document and source stores opened "read-only" with a read-write connection.**
   They now open read-only, as the graph always has (formerly BACKLOG 62).
 

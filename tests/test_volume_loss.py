@@ -213,7 +213,7 @@ def _get(url: str) -> tuple[int, str]:
     return _ask(url)[:2]
 
 
-def _ask(url: str) -> tuple[int, str, str]:
+def _ask(url: str) -> tuple[int, str, str | None]:
     """Status, body, and what the answer says about the map (`X-DunneFlow-Map`)."""
     try:
         with urllib.request.urlopen(url, timeout=10) as r:      # noqa: S310 -- localhost
