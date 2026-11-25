@@ -43,6 +43,7 @@ that a time selector was added to a working view rather than invented alongside 
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 import zlib
 from collections.abc import Iterator
@@ -51,7 +52,7 @@ from pathlib import Path
 from typing import Any
 
 from .migrate import META_PATHS, PATHS_RELATIVE
-from .store import refuse_missing
+from .store import connect_reading, refuse_missing
 
 SOURCE_SCHEMA_VERSION = 3
 
@@ -183,7 +184,7 @@ class SourceStore:
     WHAT = "a source sidecar"
 
     def __init__(self, path: Path | str, *, writable: bool = True,
-                 shared: bool = False) -> None:
+                 shared: bool = False, settle: bool = False) -> None:
         self.path = Path(path)
         self.writable = writable
         if writable:
@@ -194,7 +195,13 @@ class SourceStore:
             # names it when there is nothing there to open. `DocSourceStore` inherits both.
             refuse_missing(self.path, self.WHAT)
         # See `Store.__init__`: shared means many threads, and a lock owed by the caller.
-        self.conn = sqlite3.connect(self.path, check_same_thread=not shared)
+        # A read is `?mode=ro` with nothing mapped, as `Store`'s is (BACKLOG 62). This store
+        # has always journalled by rollback, so `settle` only matters for one some other
+        # tool put in WAL mode -- which is why it is taken rather than assumed away.
+        self._shared = shared
+        self._settle = settle
+        self.conn = (sqlite3.connect(self.path, check_same_thread=not shared) if writable
+                     else connect_reading(self.path, shared=shared, settle=settle))
         self.conn.row_factory = sqlite3.Row
         # Inflated bodies, keyed by content hash -- so an identical file at fifty paths is
         # inflated once, which is the property content addressing was chosen for. Bounded
@@ -838,7 +845,21 @@ class SourceStore:
                 "revisions": int(revs), "bytes": int(raw), "stored": int(stored)}
 
     def close(self) -> None:
+        # See `Store.close`: a reader's handle may be one whose volume has gone.
+        if not self.writable:
+            with contextlib.suppress(sqlite3.Error):
+                self.conn.close()
+            return
         self.conn.close()
+
+    def reconnect(self) -> None:
+        """See `Store.reconnect`. The inflate cache stays: it is keyed by content hash."""
+        if self.writable:
+            raise ValueError("only a read connection is reconnected; a writer is a job")
+        with contextlib.suppress(sqlite3.Error):
+            self.conn.close()
+        self.conn = connect_reading(self.path, shared=self._shared, settle=self._settle)
+        self.conn.row_factory = sqlite3.Row
 
 
 class DocSourceStore(SourceStore):

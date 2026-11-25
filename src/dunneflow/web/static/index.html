@@ -25,6 +25,10 @@
 
 <div class="app">
 
+  <!-- The map's file could not be read, and why: the server's sentence, set by shell.js
+       when any request is answered 503 with `lost`, and cleared by the next good answer. -->
+  <div id="maplost" class="maplost" role="alert" hidden></div>
+
   <!-- ══════════ TOP BAR ══════════ -->
   <header class="topbar">
     <div class="brand">

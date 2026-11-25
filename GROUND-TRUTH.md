@@ -30,8 +30,9 @@ uv run ruff check .  # must pass
 ```
 
 **All three run on Windows and on Linux as well, and the suite is expected to be green on all
-three.** Two tests skip off their own platform, by name — the macOS and Linux maps roots, each
-asserting its own layout — and three more skip on Windows for what it does not have (a
+three.** Three tests skip off their own platform, by name — the macOS and Linux maps roots, each
+asserting its own layout, and the volume detached under a reader, which needs macOS's
+`hdiutil` — and three more skip on Windows for what it does not have (a
 file's change time, POSIX process groups, a pseudo-terminal); every other skip in the suite
 is for a toolchain or a capability the machine lacks. Everything else that is
 platform-shaped is tested by **monkeypatching `sys.platform`** rather than by skipping, so the

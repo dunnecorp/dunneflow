@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -835,6 +835,103 @@ def refuse_missing(path: Path, what: str) -> None:
         )
 
 
+# The first sixteen bytes of every SQLite database, and the two header bytes that say how
+# it journals: 1 is a rollback journal, 2 is WAL (sqlite.org/fileformat2.html, offsets 18
+# and 19).
+_SQLITE_MAGIC = b"SQLite format 3\x00"
+_WAL = 2
+
+
+def in_wal_mode(path: Path) -> bool:
+    """Does the file at `path` say it journals by WAL? Read off the header, opening nothing.
+
+    A header read rather than `PRAGMA journal_mode`, because asking SQLite is opening a
+    connection, and a connection to a WAL database is the very thing that maps the `-shm`.
+    A file that is not a database, or cannot be read, is not in WAL mode as far as this
+    is concerned; whatever opens it next says why.
+    """
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(20)
+    except OSError:
+        return False
+    return len(head) == 20 and head[:16] == _SQLITE_MAGIC and head[18] == _WAL
+
+
+def leave_wal(path: Path) -> bool:
+    """Put a store that journals by WAL back on a rollback journal, if nothing else holds it.
+
+    **Why a map that is being read must not be in WAL mode.** A connection to a WAL
+    database memory-maps the `-shm` index beside it, read-only connections included. When
+    the volume holding the map goes away under a running server (sleep dismounts an
+    external drive on macOS, and so does an eject), the mapped pages lose their backing, and
+    the next query is a **SIGBUS**. Python cannot catch a SIGBUS, so the whole server dies
+    in the middle of a request it was answering. The installed 0.3.0 app died exactly so on
+    2026-11-23, in `walIndexReadHdr`, after two days of serving a map on the USB drive.
+    Reproduced with a disk image force-detached under a reader: exit 138 in WAL mode. On a
+    rollback journal the same detach is a `DatabaseError`, which can be caught and answered.
+
+    The change rewrites two header bytes and removes the `-wal` after checkpointing it. No
+    row changes, so no stamp moves and nothing needs re-reading. **It is a write by a
+    reader, and so an exception to rule 20**, made on purpose (Tom, 2026-11-25): without it
+    a map whose writer left it in WAL keeps the crash until it is analysed again. That is
+    every writer before 0.3.1, and a 0.3.1 writer that a reader was holding the file open
+    against as it finished (`leave_wal_on_close`). Only the long-lived readers ask for it
+    (`serve` and `mcp`, through `settle=True`), and only for a store that passed every check
+    and is about to be read; a CLI read lasts seconds and leaves the file as it found it.
+
+    **Best effort, and silent when it cannot.** `timeout=0`, so a map that another
+    connection holds (an analysis still writing it, a second server) is left in WAL mode
+    rather than waited on, and so is one on a read-only volume or in a read-only directory.
+    Either way the read goes ahead as it would have. Returns whether the file is now off
+    WAL, so a test can tell the two outcomes apart.
+    """
+    if not in_wal_mode(path):
+        return True
+    try:
+        # A plain path: the header is written, so this cannot be a `mode=ro` URI. The file
+        # exists (`in_wal_mode` read it), so `connect` creates nothing.
+        conn = sqlite3.connect(path, timeout=0)
+        try:
+            mode = conn.execute("PRAGMA journal_mode = DELETE").fetchone()[0]
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
+    return str(mode).lower() == "delete"
+
+
+def leave_wal_on_close(conn: sqlite3.Connection) -> None:
+    """A writer's half of `leave_wal`: the map it leaves behind journals by rollback.
+
+    Writing stays in WAL mode, because a burst of inserts is what WAL is fast at. The last
+    thing a writer does is take the file off it, so what a reader later opens has no `-shm`
+    to map. Best effort for `leave_wal`'s reason: a reader holding the file open makes the
+    switch fail, and the map is then left exactly as a 0.3.0 writer left it.
+    """
+    with suppress(sqlite3.Error):
+        conn.execute("PRAGMA journal_mode = DELETE")
+
+
+def connect_reading(path: Path, *, shared: bool = False,
+                    settle: bool = False) -> sqlite3.Connection:
+    """The one read-only connection every store opens: `?mode=ro`, and nothing mapped.
+
+    **`mmap_size = 0`, set rather than assumed.** A memory-mapped page of the database file
+    goes the way of the `-shm` (see `leave_wal`) when its volume does, and SQLite's default
+    is a compile-time choice that a different build of the interpreter may make
+    differently. Reads go through `read()`, which fails with an error instead.
+
+    `settle` is `leave_wal` first, for the long-lived readers. Callers open the result
+    without `refuse_missing` having been skipped: this does not check that the file exists.
+    """
+    if settle:
+        leave_wal(path)
+    conn = sqlite3.connect(read_only_uri(path), uri=True, check_same_thread=not shared)
+    conn.execute("PRAGMA mmap_size = 0")
+    return conn
+
+
 
 def _frontier(rows: list[sqlite3.Row]) -> dict[str, Any]:
     """Group frontier rows: outside by the far end's first segment, the rest by why.
@@ -869,7 +966,7 @@ class Store:
     WHAT = "a code graph"
 
     def __init__(self, path: Path | str, *, writable: bool = True,
-                 shared: bool = False) -> None:
+                 shared: bool = False, settle: bool = False) -> None:
         """Open one program's graph.
 
         `writable=False` is how every orientation command opens it, and the
@@ -919,8 +1016,13 @@ class Store:
         # than incidental: a writer is handed a plain `Path`, and `web/changes.py` records
         # the trap from the other side -- a URI handed to something that opens it without
         # `uri=True` names a file called `file:...?mode=ro`.
+        #
+        # `settle` takes the map off WAL first and is asked for by `serve` and `mcp` only;
+        # see `leave_wal` for the crash it prevents and the rule it bends to.
+        self._shared = shared
+        self._settle = settle
         self.conn = (
-            sqlite3.connect(read_only_uri(self.path), uri=True, check_same_thread=not shared)
+            connect_reading(self.path, shared=shared)
             if not writable else
             sqlite3.connect(self.path, check_same_thread=not shared)
         )
@@ -937,6 +1039,7 @@ class Store:
             self.reread = {}
             self._refuse_if_stale()
             self._refuse_if_a_language_is_stale()
+            self._settle_once_readable()
             return
         self.rebuilt = self._discard_if_stale()
         self.conn.executescript(SCHEMA_SQL)
@@ -1135,8 +1238,44 @@ class Store:
     # -- lifecycle -------------------------------------------------------- #
 
     def close(self) -> None:
+        if not self.writable:
+            # A reader has nothing to commit, and its handle may be one whose volume has
+            # gone (`reconnect`): closing it must not fail the program switch or the
+            # shutdown that is asking.
+            with suppress(sqlite3.Error):
+                self.conn.close()
+            return
         self.conn.commit()
+        leave_wal_on_close(self.conn)
         self.conn.close()
+
+    def _settle_once_readable(self) -> None:
+        """`settle`'s conversion, done only once this store has passed every check.
+
+        Not at the first connect, because a store that is then refused (stale, the wrong
+        kind) would have been rewritten for nothing, and rule 20's exception is only for a
+        map this reader goes on to read. The checking connection is closed first: it holds
+        the WAL open, and `leave_wal` waits for no one.
+        """
+        if self._settle and in_wal_mode(self.path):
+            self.conn.close()
+            self.conn = connect_reading(self.path, shared=self._shared, settle=True)
+            self.conn.row_factory = sqlite3.Row
+
+    def reconnect(self) -> None:
+        """Replace a read connection that has stopped working, keeping this object.
+
+        For the server, after the volume holding the map went away and came back: the old
+        connection's file handle names a mount that no longer exists, and every read on it
+        fails. The new one is opened exactly as `__init__` opened the first. The staleness
+        checks are not run again: the file is the one they passed.
+        """
+        if self.writable:
+            raise ValueError("only a read connection is reconnected; a writer is a job")
+        with suppress(sqlite3.Error):
+            self.conn.close()
+        self.conn = connect_reading(self.path, shared=self._shared, settle=self._settle)
+        self.conn.row_factory = sqlite3.Row
 
     def __enter__(self) -> Store:
         return self

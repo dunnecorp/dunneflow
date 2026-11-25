@@ -8,7 +8,9 @@ reveal at the foot of this file are the only parts of it that are platform-speci
 
 Both stores are opened `writable=False`. Serving must never be able to damage the map it
 is showing -- see rule 20, which exists because a read command once dropped every table it
-came to read.
+came to read. **One write is allowed, and it changes no row:** each is opened `settle=True`,
+which takes a map off WAL before reading it, because a WAL map read from a volume that
+sleep dismounts kills the server (`store.leave_wal`).
 
 The graph is sent **columnar**: parallel arrays rather than one object per node. At
 fifteen thousand drawn nodes the difference is several megabytes of repeated key names,
@@ -22,6 +24,7 @@ import dataclasses
 import json
 import os
 import socket
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -46,7 +49,13 @@ from ..resolve.macros import macro_places, macro_report
 from ..runtime import resource_root
 from ..sourcedb import DocSourceStore, SourceStore
 from ..standards import STANDARDS_DB
-from ..store import StaleGraphError, Store, UnfinishedMapError, unfinished_sentence
+from ..store import (
+    StaleGraphError,
+    Store,
+    UnfinishedMapError,
+    leave_wal,
+    unfinished_sentence,
+)
 from . import (
     analysis,
     anomalychanges,
@@ -624,7 +633,14 @@ class _Live:
     using a connection the switch had already closed. A guard reads this off the source.
 
     Both stores are opened `writable=False`. Rule 20: serving may refuse, it may never
-    repair, and it must never be able to damage the map it came to show.
+    repair, and it must never be able to damage the map it came to show. The one exception
+    is `settle=True`'s journal mode, which no row depends on (`store.leave_wal`).
+
+    **A volume that goes away is survived, not just refused.** The stores are held for as
+    long as the server runs, which on a laptop spans sleeps, and sleep dismounts an external
+    drive. Every read connection afterwards fails. `recover` reopens them once the file is
+    back, and says which file is missing while it is not. The two dispatchers (`_Handler`
+    and the MCP server) call it when a store read raises `sqlite3.DatabaseError`.
     """
 
     # The caches keyed on a **pair** of versions, and therefore the ones a switch
@@ -656,6 +672,12 @@ class _Live:
                  out_root: Path | None = None, root_gone: str = "",
                  allow_unfinished: bool = False) -> None:
         self.lock = threading.Lock()
+        # **Whether the open map's file is missing right now**, and the sentence saying so;
+        # `""` while it can be read. Set by `recover` when it finds a held file gone, and
+        # cleared only when it reconnects. Every answer carries it (`_Handler.end_headers`),
+        # because the page polls routes that never touch the map, and a 200 from one of
+        # those says nothing about whether the map is back.
+        self.lost = ""
         # **The Setting "Unfinished maps", as the server's default** -- `--allow-unfinished`
         # on `serve` and `mcp`. A page sends its own on every switch, which wins; this is
         # what the boot and a request that says nothing get. Refusing is the default.
@@ -841,7 +863,7 @@ class _Live:
         # A graph written by an older DunneFlow refuses to open rather than being
         # repaired (rule 20), and `revisions.known` will list it as comparable regardless
         # -- so this is a real outcome of a real switch, not a defensive branch.
-        store = Store(graph_db, writable=False, shared=True)
+        store = Store(graph_db, writable=False, shared=True, settle=True)
         # **A map that never finished being written is refused here**, before anything is
         # built from it and before anything is swapped. It opens perfectly -- that is the
         # whole problem: one killed twelve seconds into the Comitia tree reports 4,786
@@ -1011,7 +1033,7 @@ class _Live:
             # refuses a connection made on another one -- from the request, by name, and
             # only for the routes that touch it. Every read is under `_Live.lock`, which
             # is the lock the flag makes the caller responsible for.
-            return DocStore(docs_db, writable=False, shared=True)
+            return DocStore(docs_db, writable=False, shared=True, settle=True)
         except (ValueError, OSError):
             return None
 
@@ -1043,7 +1065,7 @@ class _Live:
         if not path.exists():
             return None
         try:
-            return SourceStore(path, writable=False, shared=True)
+            return SourceStore(path, writable=False, shared=True, settle=True)
         except (ValueError, OSError):
             return None
 
@@ -1058,7 +1080,7 @@ class _Live:
         if not path.exists():
             return None
         try:
-            return DocStore(path, writable=False, shared=True)
+            return DocStore(path, writable=False, shared=True, settle=True)
         except (ValueError, OSError):
             return None
 
@@ -1068,7 +1090,7 @@ class _Live:
         if not path.exists():
             return None
         try:
-            return DocSourceStore(path, writable=False, shared=True)
+            return DocSourceStore(path, writable=False, shared=True, settle=True)
         except (ValueError, OSError):
             return None
 
@@ -1530,6 +1552,75 @@ class _Live:
         if self.standards is not None:
             self.standards.close()
 
+    def held_stores(self) -> list[Store | DocStore | SourceStore]:
+        """Every store this server holds open, in the order they are reopened."""
+        base = self._base
+        held: list[Store | DocStore | SourceStore | None] = [
+            base.store if base is not None else None,
+            base.docs if base is not None else None,
+            self.source, self.docsource, self.standards,
+        ]
+        return [s for s in held if s is not None]
+
+    def recover(self) -> str | None:
+        """After a read failed: reopen every held store, or say which file is not there.
+
+        Returns `None` when every held connection still answers, so the failure was the
+        statement's own (a bad query through `mcp`'s `query` tool is the common one) and the
+        caller re-raises it; `""` when the stores were reopened and the request may be
+        tried again; a sentence when a file is missing, which the reader is told instead.
+
+        The test is `PRAGMA schema_version` on each connection, which reads the database
+        header from the file: on a rollback journal every read transaction does, so a
+        handle whose volume went away fails it, and a working one costs microseconds.
+
+        **Why reopen rather than refuse.** A held connection outlives the volume it was
+        opened on: sleep dismounts an external drive, waking mounts it again, and the old
+        handle keeps naming the mount that went away. Every read on it fails, with SQLite's
+        *"disk image is malformed"* or *"disk I/O error"*, neither of which is true of the
+        map. A fresh connection to the same path reads it perfectly. So the first failure
+        reopens everything this server holds, under the lock every read already takes, and
+        the dispatcher asks once more. A file that really is damaged fails the second time
+        too, and that failure is reported as it always was.
+
+        **The base is not rebuilt.** Its model, payload and cover were read from this file
+        and the file has not changed: the volume went away and came back. Only the
+        connections are new, so the reader keeps their selection and their place.
+        """
+        with self.lock:
+            held = self.held_stores()
+            gone = [s.path for s in held if not s.path.exists()]
+            if gone:
+                self.lost = volume_gone(gone[0])
+                return self.lost
+            if all(_answers(s.conn) for s in held):
+                return None
+            for store in held:
+                store.reconnect()
+            self.lost = ""
+        return ""
+
+
+def _answers(conn: sqlite3.Connection) -> bool:
+    """Does this connection still read its file? See `_Live.recover`."""
+    try:
+        conn.execute("PRAGMA schema_version").fetchone()
+    except sqlite3.Error:
+        return False
+    return True
+
+
+def volume_gone(path: Path) -> str:
+    """The sentence for a held store whose file is not there any more (rule 89).
+
+    It names the file and what to do. The cause is almost always a disk: an external drive
+    that sleep dismounted and has not come back yet, or one that was ejected. A file that
+    was deleted gets the same sentence, which is right too: the map has gone either way.
+    """
+    return (f"The map this server has open cannot be read: {path} is not there. If it is "
+            f"on an external drive, the drive has been disconnected (sleep can do that). "
+            f"Reconnect it and ask again; nothing needs restarting.")
+
 
 def said_residue(stored: str | None) -> dict[str, Any]:
     """`said()`'s three states for a field that holds a **list**.
@@ -1586,6 +1677,10 @@ class _Handler(BaseHTTPRequestHandler):
         # places the moment a base could be switched. `_Live.current` owns every part of
         # a version and is swapped whole, so a handler reads it and never caches it.
         self._live = live
+        # Whether any of this request's answer has gone out yet, because a request can only
+        # be asked again after `recover` if nothing has. Set by `end_headers`, the one call
+        # every answer makes before its body, and put down by `_answer` for each request.
+        self._answered = False
         super().__init__(*args, **kw)
 
     def log_message(self, fmt: str, *args: Any) -> None:
@@ -2144,7 +2239,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._live.findings[key] = rows
                 return rows, ""
         try:
-            other = Store(graph_db, writable=False)
+            other = Store(graph_db, writable=False, settle=True)
         except (StaleGraphError, ValueError, OSError) as exc:
             return None, str(exc)
         try:
@@ -2832,7 +2927,7 @@ class _Handler(BaseHTTPRequestHandler):
                    if graph == base.graph_db else None)
         if got is None and graph.exists():
             try:
-                other = Store(graph, writable=False)
+                other = Store(graph, writable=False, settle=True)
             except Exception:                       # noqa: BLE001 -- a version is not
                 return {}                           # worth failing the whole listing for
             try:
@@ -2976,6 +3071,12 @@ class _Handler(BaseHTTPRequestHandler):
             # answer licenses -- which would hand `changes.build` a connection that has
             # just been closed.
             built = None
+            # Both ends off WAL before either is attached, for the reason every store here
+            # is opened `settle=True`: an attached WAL file maps its `-shm` exactly as a
+            # connection does (`store.leave_wal`). The served end already is; the compared
+            # one is a file nothing here has opened yet.
+            leave_wal(compared)
+            leave_wal(base)
             with self._live.lock:
                 rode = base == self._live.current.graph_db
                 if rode:
@@ -3249,7 +3350,7 @@ class _Handler(BaseHTTPRequestHandler):
         if graph is None:
             return True             # `openable` already says this row has nothing to read
         try:
-            store = Store(graph, writable=False)
+            store = Store(graph, writable=False, settle=True)
         except Exception:           # noqa: BLE001 -- stale, wrong kind, unreadable: all
             return True             # `openable`'s business, and none of this column's
         try:
@@ -3893,6 +3994,9 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Cross-Origin-Resource-Policy", "same-origin")
         self.send_header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+        # Whether the open map can be read, on every answer, for `#maplost` (`_Live.lost`).
+        self.send_header("X-DunneFlow-Map", "lost" if self._live.lost else "readable")
+        self._answered = True
         super().end_headers()
 
     def do_GET(self) -> None:                     # noqa: N802  (stdlib's spelling)
@@ -3911,10 +4015,7 @@ class _Handler(BaseHTTPRequestHandler):
             # the connection with **nothing on it at all**, rule 91's symptom reached by a
             # different door. Answered as the gate would have answered it, from the same
             # function, so the race and the defect give one sentence (rule 41).
-            try:
-                getattr(self, handler)(parse_qs(query))
-            except NothingOpen:
-                self._refuse_without_base(raw)
+            self._answer(handler, raw, parse_qs(query))
             return
         for prefix, root in self.TREES:
             if raw.startswith(prefix):
@@ -3949,14 +4050,50 @@ class _Handler(BaseHTTPRequestHandler):
             self._refuse_without_base(raw)
             return
         # The same race, on the table that can cause it. See `do_GET`.
+        self._answer(handler, raw, parse_qs(query))
+
+    def _answer(self, handler: str, raw: str, q: dict[str, list[str]]) -> None:
+        """Run one route, answering the two failures that are not the route's own.
+
+        `NothingOpen` is the race `do_GET` describes. **`sqlite3.DatabaseError` is a held
+        connection that stopped working**, almost always because sleep dismounted the
+        volume the map is on (`_Live.recover`). The stores are reopened and the route is
+        run once more; while the file is missing the reader gets a 503 that names it. Only
+        a request that has sent nothing yet is run again, because half an answer followed
+        by a whole one is a corrupt answer. A route that fails a second time fails the way
+        it always did.
+        """
+        route = getattr(self, handler)
+        # Per request, not per handler: one handler answers every request on a kept-alive
+        # connection, so the flag the last answer left set has to be put down here.
+        self._answered = False
         try:
-            getattr(self, handler)(parse_qs(query))
+            route(q)
+            return
+        except NothingOpen:
+            self._refuse_without_base(raw)
+            return
+        except sqlite3.DatabaseError as exc:
+            if self._answered:
+                raise
+            failed = exc
+        lost = self._live.recover()
+        if lost is None:
+            raise failed
+        if lost:
+            # JSON, not `send_error`'s HTML: the page reads `lost` out of whichever request
+            # met it and puts the sentence above everything (`shell.js`, `#maplost`), so it
+            # is said once and in words rather than as a 503 in every pane.
+            self._json({"lost": lost}, status=503)
+            return
+        try:
+            route(q)
         except NothingOpen:
             self._refuse_without_base(raw)
 
-    def _json(self, obj: dict[str, Any]) -> None:
+    def _json(self, obj: dict[str, Any], status: int = 200) -> None:
         body = json.dumps(obj, separators=(",", ":")).encode("utf-8")
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")

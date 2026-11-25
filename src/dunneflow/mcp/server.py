@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import sqlite3
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -290,7 +291,7 @@ class Server:
 
         tool = tools.BY_NAME[name]
         try:
-            payload = tool.body(self.session, arguments)
+            payload = self._run(tool, arguments)
         except Refused as exc:
             # Already a sentence written for whoever asked; `why` would put a class name
             # in front of it, which is the one thing that sentence must not have.
@@ -300,6 +301,27 @@ class Server:
             self._log(f"{name} failed: {exc!r}")
             return self._content(why(exc), is_error=True)
         return self._content(payload)
+
+    def _run(self, tool: tools.Tool, arguments: dict[str, Any]) -> dict[str, Any]:
+        """One tool's body, run again once if the map's volume went away and came back.
+
+        The dashboard's `_Handler._answer`, for this server: both hold the same `_Live`,
+        so one `recover` serves both. A statement that fails on a connection that still
+        works (a bad `query`, most often) is re-raised as it was; a missing file is a
+        refusal that names it. Every tool may be run twice: the reads are reads, and the
+        two that act (`open`, `analyze`) refuse or repeat harmlessly when asked again.
+        """
+        try:
+            return tool.body(self.session, arguments)
+        except sqlite3.DatabaseError as exc:
+            failed = exc
+        lost = self.session.live.recover()
+        if lost is None:
+            raise failed
+        if lost:
+            raise Refused(lost) from failed
+        self._log(f"{tool.name}: the map's connections were reopened")
+        return tool.body(self.session, arguments)
 
     def _content(self, payload: Any, *, is_error: bool = False) -> dict[str, Any]:
         """A tool result, as text.

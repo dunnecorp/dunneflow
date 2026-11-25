@@ -743,6 +743,15 @@ body {
    own definition of a map (rule 80). Both colours from the sets, so it follows the palette. */
 .verstrip-unfinished { color: var(--sev-broken); background: var(--sev-broken-bg);
                        padding: 0 .4rem; border-radius: .25rem; margin-right: .5rem; }
+/* The map's file cannot be read (`#maplost`, set by `shell.js`). Above everything, and in
+   BROKEN's colours, because nothing on screen can be refreshed until it clears. Fixed rather
+   than in the flow, so its arrival does not move the picture under the pointer (rule 73). */
+.maplost { position: fixed; top: .5rem; left: 50%; transform: translateX(-50%);
+           z-index: 1000; max-width: min(48rem, 90vw); padding: .5rem .9rem;
+           color: var(--sev-broken); background: var(--sev-broken-bg);
+           border: .0625rem solid var(--sev-broken); border-radius: .4rem;
+           box-shadow: var(--shadow); }
+.maplost[hidden] { display: none; }
 /* **One line, clipped, scrolling** -- `verStrip`, default off, so this is reached only when
  * a reader asks for it.
  *

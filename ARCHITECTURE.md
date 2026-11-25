@@ -210,6 +210,17 @@ a graph that *opens perfectly and lies* — one stopped twelve seconds into Comi
 the determinism guarantee. Reachable with no stop button anywhere: Ctrl-C, a sleeping laptop,
 an OOM kill.
 
+**A map is read without shared memory, and a server outlives its volume** (rule 111).
+Writers journal by WAL while they write and put the map on a rollback journal as they close
+it (`store.leave_wal_on_close`). The long-lived readers, `serve` and `mcp`, open every store
+`settle=True`, which converts a map an older writer left in WAL (`store.leave_wal`, rule 20's
+one exception). Every read connection comes from `store.connect_reading`: `?mode=ro` and
+`mmap_size = 0`. When a held connection fails, `_Handler._answer` and the MCP server's
+`_run` call `_Live.recover`. It re-raises if every connection still answers (the
+statement's own error), names the file if it is gone, and otherwise reopens every held
+store and asks once more. The base is not rebuilt, so the reader keeps their place. The
+page shows a `lost` sentence in `#maplost` (`shell.js` wraps `fetch` to find it).
+
 **Three states, never two** (`Store.finished`): missing means *written before this key
 existed* and is fine, `""` means *started and never finished*, `"yes"` means finished.
 Refusing on absence would refuse every map made before it. `UnfinishedMapError` is raised on

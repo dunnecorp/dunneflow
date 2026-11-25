@@ -61,6 +61,7 @@ from typing import Any, NamedTuple
 # this module learns that a canonical form exists, never how one is made, which is what
 # keeps the resolver, the renderers and this view ignorant of any particular language.
 from ..canonical import canonical
+from ..store import read_only_uri
 
 # --------------------------------------------------------------------------- #
 # What a routine *does*, stated per fact table as (owner column, compared columns).
@@ -394,9 +395,12 @@ def _attach(compared: Path, base: Path) -> sqlite3.Connection:
     # Absolute, because a relative path inside a `file:` URI is not the same path --
     # it produced `unable to open database: file:output/lictores/graph@...db`, which
     # names the file it could not open and still does not say why.
-    conn.execute("ATTACH DATABASE ? AS compared",
-                 (f"file:{compared.resolve()}?mode=ro",))
-    conn.execute("ATTACH DATABASE ? AS base", (f"file:{base.resolve()}?mode=ro",))
+    #
+    # Spelt by `read_only_uri`, not by hand (BACKLOG 62): a `?`, `#` or `%` in a directory
+    # name ends the path early in a hand-written URI, and the attach then names a file that
+    # is not this one.
+    conn.execute("ATTACH DATABASE ? AS compared", (read_only_uri(compared.resolve()),))
+    conn.execute("ATTACH DATABASE ? AS base", (read_only_uri(base.resolve()),))
     return conn
 
 

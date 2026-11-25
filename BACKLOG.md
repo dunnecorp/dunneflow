@@ -211,12 +211,6 @@ rules per language, measured on a tree that uses one.
 calls built to be handed over. Both documents now say so. *Settled by* deciding whether a
 hand-over strips it, relativises it, or is told to leave the file behind.
 
-**62. Two stores opened to be read can be written to.** `SourceStore` and `DocStore` call
-plain `sqlite3.connect` with `writable=False`, the hole `Store` closed with `?mode=ro`
-(rule 20); and `changes._attach` writes its read-only URI by hand where
-`store.read_only_uri` exists because `?`, `#` or `%` in a path breaks that spelling. Read.
-*Settled by* opening all three through `read_only_uri`.
-
 **63. Some fifty comments in fingerprinted files describe a tool that has moved on.**
 `schema.py`, `sql.py`, `ingest/`, `detectors/`, `extractors/` and `plugins/` were read and
 not edited, because their bytes are in every stored map's stamp and a corrected comment

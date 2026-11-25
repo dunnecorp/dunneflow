@@ -198,6 +198,16 @@ rule of that number — a blank canvas must say why it is blank — which does e
     a read against a stale store, because nobody thought of a reader as something that
     could destroy.
 
+    **One exception, made on purpose on 2026-11-25 for 0.3.1.** `serve` and `mcp` take a
+    map off WAL when they open it (`store.leave_wal`, through `settle=True`): two header
+    bytes and a checkpoint, and not a row. Every map written before 0.3.1 is in WAL mode,
+    and a long-lived reader of one dies when its volume goes away (rule 111). Tom chose this
+    over leaving the conversion to a re-analysis. It is narrow in both directions: only a
+    store that has passed every check and is about to be read is converted, so a stale map
+    is refused untouched; a CLI read still leaves the file exactly as it found it; and the
+    change repairs nothing a reader could be told, so the outcome this rule exists for (a
+    reader answering out of something it changed) cannot follow from it.
+
 22. **A node is a billboard, not a disc.** A circle drawn in the plane of its own disk
     foreshortens into an ellipse the moment the stack is tilted, and an ellipse does not
     read as a ball -- it reads as a coin seen edge-on. A sphere has no orientation, so a
@@ -2493,3 +2503,36 @@ rule of that number — a blank canvas must say why it is blank — which does e
      learn to ask, and the one that forgot would report the false thing. It is recorded on the use
      (`macro_sites.shadows`), and the table of boundaries holds no row for it.
 
+111. **A long-lived handle outlives the volume it was opened on, and a memory-mapped page
+     takes the process with it.** The installed 0.3.0 app died on 2026-11-23 after two days
+     of serving a map from a USB drive. It was a SIGBUS in SQLite's `walIndexReadHdr`, on a
+     request thread. Sleep dismounts an external drive on macOS. Every map was in WAL mode,
+     and a connection to a WAL database, a read-only one included, memory-maps the `-shm`
+     index beside it. When the volume went, the mapped pages had nothing behind them, and the
+     next query was a signal rather than an error. Python cannot catch a signal, so nothing
+     in the server could answer it: not the route, not the handler, not the process.
+
+     **The distinction is the whole rule: a read that fails is an error, and a page that
+     fails is a death.** Reproduced by force-detaching a disk image under a reader. In WAL
+     mode the reader died with -10. On a rollback journal the same detach was a
+     `DatabaseError`, which a server can catch, answer and recover from. So a map is put on
+     a rollback journal when its writer closes it (writing keeps WAL, which is fast at
+     bursts), the long-lived readers convert a map an older writer left in WAL (rule 20's one
+     exception), and every read connection sets `mmap_size = 0` rather than trusting a
+     compile-time default. The writers' 512 MB `mmap_size` stays: an analysis that loses its
+     volume is lost either way, and it runs in its own process.
+
+     **Surviving the error is half of it, because the handle stays dead.** Waking mounts the
+     drive again and the old file descriptor still names the mount that went. Every read
+     fails, with SQLite's *"disk image is malformed"*, which is not true of the map. So the
+     dispatchers (`_Handler._answer`, the MCP server's `_run`) take a `DatabaseError`,
+     reopen every held connection, and ask once more. A missing file gets a sentence naming
+     it, and the page shows that above everything. A connection that still answers means the
+     error was the statement's own, and it is re-raised untouched: a bad `query` must not be
+     mistaken for a lost disk.
+
+     Found by a crash report, which is the only place it could have been found. Every test
+     ran on the internal disk and every measurement was taken with the volume mounted. The
+     comment that put `mmap_size` in the schema said the graph often lives on an external
+     volume, and drew the opposite conclusion from it. `tests/test_volume_loss.py` detaches
+     a real image, and fails with the fix switched off.

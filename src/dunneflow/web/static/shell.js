@@ -2,6 +2,47 @@
 "use strict";
 
 /* ════════════════════════════════════════════════════════════
+   The map could not be read: one sentence, above everything.
+
+   The server holds the map open for as long as it runs, and on a laptop that spans sleeps.
+   Sleep dismounts an external drive, so a request can find the map's file gone. The server
+   answers that request 503 with `lost`, a sentence naming the file, and reopens the map by
+   itself once the drive is back (`serve._Live.recover`). Without this, the reader saw "the
+   server answered 503" in whichever pane happened to ask, and no reason anywhere.
+
+   `fetch` is wrapped because it is the one place every request passes (rule 51): the
+   panes each fetch for themselves, from more than forty places. The wrapper only reads a
+   clone, so the caller gets the response untouched and still handles its own failure.
+
+   **Cleared by the server's word, never by a 200.** The page polls routes that never touch
+   the map (the analysis panel, the base's progress), and those answer 200 while the drive
+   is still gone. The first draft cleared on any 200, and in a browser the notice was gone
+   again within a second of appearing. Every answer carries `X-DunneFlow-Map`, which the
+   server sets back to `readable` only once it has reopened the map.
+   ════════════════════════════════════════════════════════════ */
+(() => {
+  const ask = window.fetch.bind(window);
+  const say = (sentence) => {
+    const el = document.getElementById("maplost");
+    if (!el) return;
+    el.textContent = sentence;
+    el.hidden = !sentence;
+  };
+  window.fetch = async (input, init) => {
+    const r = await ask(input, init);
+    const url = typeof input === "string" ? input : (input && input.url) || "";
+    if (url.startsWith("/api/")) {
+      if (r.status === 503) {
+        r.clone().json().then(d => { if (d && d.lost) say(d.lost); }).catch(() => {});
+      } else if (r.headers.get("X-DunneFlow-Map") === "readable") {
+        say("");
+      }
+    }
+    return r;
+  };
+})();
+
+/* ════════════════════════════════════════════════════════════
    The data these views draw comes from the server, not from here.
 
    This file began as the ratified prototype with Lictores' real numbers pinned

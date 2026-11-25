@@ -1523,3 +1523,25 @@ deleted first, to test whether the slow steps after reading were a scattered gra
   has now been 8,353, 10,363, 18,206, 18,584 and 30,660 s, so a figure for it needs a quiet
   machine and the conditions logged.
 
+
+## Reading a map on a rollback journal instead of WAL (v2, measured 2026-11-25)
+
+0.3.1 reads every map on a rollback journal, with nothing memory-mapped, so that a volume
+that sleep dismounts is an error rather than a SIGBUS (rule 111). What that costs a reader,
+on emir's map (43 MB, made at 1da4813) and its sidecars, copied with SQLite's backup API to
+the **internal** disk. Apple M1, 8 GB. Warm: the median of runs 2 to 4 of four, the whole
+measurement taken twice and both agreeing to the millisecond. The base build is
+`_Live.open`, all six steps; a lookup is `detail.describe` on one of the first 300
+routines, which is the inspector's request; the detectors are `cover.anomalies`.
+
+| | WAL | rollback journal |
+|---|---:|---:|
+| base build | 0.332 s | 0.334 s |
+| 300 inspector lookups | 0.074 s | 0.090 s |
+| the detectors | 0.083 s | 0.083 s |
+
+**A lookup is 0.05 ms slower**, 0.25 ms against 0.30 ms. A rollback reader takes and drops
+a file lock for each read transaction, where a WAL reader marks a slot in shared memory, and
+shared memory is exactly what cannot be allowed. Nothing a reader waits for is moved by it.
+Not retaken cold on the external volume. The lock is per transaction, not per page, so a
+cold read is not expected to widen the gap, but that is not a measurement (rule 24).

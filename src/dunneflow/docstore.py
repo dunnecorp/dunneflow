@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +30,13 @@ from .migrate import (
     migration_speaks_for,
 )
 from .schema import DOC_SCHEMA_VERSION, DocFacts
-from .store import StaleGraphError, refuse_missing
+from .store import (
+    StaleGraphError,
+    connect_reading,
+    in_wal_mode,
+    leave_wal_on_close,
+    refuse_missing,
+)
 
 DOC_SCHEMA_SQL = """
 PRAGMA journal_mode = WAL;
@@ -146,7 +152,7 @@ class DocStore:
     WHAT = "a document corpus"
 
     def __init__(self, path: Path | str, *, writable: bool = True,
-                 shared: bool = False) -> None:
+                 shared: bool = False, settle: bool = False) -> None:
         """See `Store.__init__`: a reader refuses a stale corpus, it never drops one.
 
         `shared` arrived late, and the reason it was not here from the start is worth
@@ -169,12 +175,20 @@ class DocStore:
             # besides, so this changes nothing it does -- and it means the next caller
             # cannot leave a `docs.db` behind by reading one. See `refuse_missing`.
             refuse_missing(self.path, self.WHAT)
-        self.conn = sqlite3.connect(self.path, check_same_thread=not shared)
+        # A read is `?mode=ro` with nothing memory-mapped, through the one helper `Store`
+        # reads through (BACKLOG 62, rule 61): this opened a plain read-write connection
+        # until 0.3.1, and with `DOC_SCHEMA_SQL`'s WAL that is a `-shm` mapped by every
+        # dashboard holding a document list. See `store.leave_wal`.
+        self._shared = shared
+        self._settle = settle
+        self.conn = (sqlite3.connect(self.path, check_same_thread=not shared) if writable
+                     else connect_reading(self.path, shared=shared))
         self.conn.row_factory = sqlite3.Row
         self._refuse_wrong_kind()
         if not writable:
             self.rebuilt = False
             self._refuse_if_stale()
+            self._settle_once_readable()
             return
         self.rebuilt = self._discard_if_stale()
         self.conn.executescript(DOC_SCHEMA_SQL)
@@ -262,8 +276,32 @@ class DocStore:
     # -- lifecycle ---------------------------------------------------------- #
 
     def close(self) -> None:
+        if not self.writable:
+            # A reader has nothing to commit, and its handle may be one whose volume has
+            # gone (`reconnect`): closing it must not fail the program switch or the
+            # shutdown that is asking.
+            with suppress(sqlite3.Error):
+                self.conn.close()
+            return
         self.conn.commit()
+        leave_wal_on_close(self.conn)
         self.conn.close()
+
+    def _settle_once_readable(self) -> None:
+        """See `Store._settle_once_readable`."""
+        if self._settle and in_wal_mode(self.path):
+            self.conn.close()
+            self.conn = connect_reading(self.path, shared=self._shared, settle=True)
+            self.conn.row_factory = sqlite3.Row
+
+    def reconnect(self) -> None:
+        """See `Store.reconnect`."""
+        if self.writable:
+            raise ValueError("only a read connection is reconnected; a writer is a job")
+        with suppress(sqlite3.Error):
+            self.conn.close()
+        self.conn = connect_reading(self.path, shared=self._shared, settle=self._settle)
+        self.conn.row_factory = sqlite3.Row
 
     def __enter__(self) -> DocStore:
         return self

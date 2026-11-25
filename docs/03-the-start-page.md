@@ -80,6 +80,12 @@ same trap one directory over; on Windows the same `mkdir` either fails on a driv
 that is not there or writes to one that has been reassigned to something else. None of
 those is an answer, so it does not guess.
 
+**If the disk goes away while a map is open**, the usual cause being a Mac going to sleep
+(which disconnects external drives), the map stays on screen. Anything that has to read the
+file cannot be shown yet, and a red notice at the top of the page names the file it cannot read. Plug the
+disk back in, or wake the Mac, and carry on: the next thing you click reads the map again,
+and the notice goes. Nothing needs restarting.
+
 ---
 
 Next: [4. Your first map](04-your-first-map.md)

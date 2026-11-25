@@ -20,7 +20,7 @@ what it is doing:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | what the tool is for, the commands, the verification gates, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 109 engineering rules **in full**, with the false result each came from — numbered to 110, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `RULES.md` | the 110 engineering rules **in full**, with the false result each came from — numbered to 111, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 31 dashboard design rules in full | before building or changing a view |
 | `ARCHITECTURE.md` | what each module owns, and what each surface answers — `serve`, `mcp`, `query`, and everything under them | before working in a module, or adding a route |
 | `PACKAGING.md` | the spec, the three release scripts, signing, notarisation, and what a frozen build reads as a file | before touching `packaging/` or `runtime.py` |
@@ -139,8 +139,9 @@ uv run ruff check .  # must pass
 ```
 
 **All three run on Windows and on Linux as well, and the suite is expected to be green on
-all three.** Two tests skip off their own platform, by name, and three more skip on
-Windows; a test that needs a reader's toolchain skips where that is missing. Everything else
+all three.** Three tests skip off their own platform, by name (one of them detaches a disk
+image with macOS's `hdiutil`), and three more skip on Windows; a test that needs a reader's
+toolchain skips where that is missing. Everything else
 that is platform-shaped is tested by monkeypatching `sys.platform` rather than by skipping.
 
 Four more gates are **conditional on what moved**, and each one exists because something got
@@ -332,6 +333,8 @@ it was written from.
      into place.
 110. What clang did not record under a macro says nothing about the macro, and what a macro is
      named says nothing about what it does.
+111. A long-lived handle outlives the volume it was opened on, and a memory-mapped page takes
+     the process with it.
 ```
 
 ## Anomalies: the discipline
